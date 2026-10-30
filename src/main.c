@@ -42,6 +42,59 @@
 #define SNES_GAME_VERSION "dev"
 #endif
 
+#include "config.h"
+#include <string.h>
+
+#ifdef RECOMP_LAUNCHER
+#include "recomp_launcher.h"
+/* The host switches to OpenGL whenever a shader is selected; say so where the
+ * player picks the renderer. */
+static void Dkc2ConfigureLauncher(RecompLauncherCGameInfo *info)
+{
+    info->renderer_note = "Shaders need OpenGL: choosing one switches the renderer to OpenGL.";
+}
+#endif
+
+#if defined(_WIN32) && !defined(DKC2_CONSOLE)
+#include <io.h>
+#include <stdio.h>
+#undef HIBYTE  /* the framework's types.h has its own; this file does not use it */
+#undef LOBYTE
+#include <windows.h>
+
+/* The Windows build is a window app (no console, see CMakeLists.txt). Keep the
+ * host's stdout/stderr diagnostics in <exe>.log beside the executable unless
+ * the caller already redirected them. */
+static void Dkc2RedirectLogsToFile(void)
+{
+    if (GetStdHandle(STD_ERROR_HANDLE) != NULL)
+        return;
+    wchar_t path[MAX_PATH];
+    DWORD len = GetModuleFileNameW(NULL, path, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH - 4)
+        return;
+    wchar_t *dot = wcsrchr(path, L'.');
+    wcscpy_s(dot ? dot : path + len, MAX_PATH - (size_t)((dot ? dot : path + len) - path), L".log");
+    FILE *log;
+    if (_wfreopen_s(&log, path, L"w", stderr) != 0)
+        return;
+    setvbuf(stderr, NULL, _IONBF, 0);
+    if (_dup2(_fileno(stderr), 1) == 0)
+        setvbuf(stdout, NULL, _IONBF, 0);
+}
+#endif
+
+/* GLSL presets (assets/shaders) render only on the OpenGL presenter, so make
+ * it this title's default. A renderer the player picked in the launcher is
+ * saved to config.ini and left alone. */
+static void Dkc2AfterConfig(void)
+{
+    if (g_config.renderer[0] == '\0') {
+        strcpy(g_config.renderer, "opengl");
+        g_config.output_method = kOutputMethod_OpenGL;
+    }
+}
+
 static const SnesDesktopHostGame kGameHost = {
     .display_name        = "Donkey Kong Country 2",
     .window_title        = "Donkey Kong Country 2",
@@ -53,6 +106,11 @@ static const SnesDesktopHostGame kGameHost = {
     .build_version       = SNES_GAME_VERSION,
     .game_info           = &kGameInfo,
     .num_players         = 2,
+    .shader_supported    = 1,
+    .after_config        = Dkc2AfterConfig,
+#ifdef RECOMP_LAUNCHER
+    .configure_launcher  = Dkc2ConfigureLauncher,
+#endif
     /* Battery-backed SRAM shows the launcher's SAVES panel. Leave NULL for a
      * title without one. The path is exe-relative. */
     .sram_path           = "saves/save.srm",
@@ -63,5 +121,8 @@ static const SnesDesktopHostGame kGameHost = {
 #endif
 int main(int argc, char **argv)
 {
+#if defined(_WIN32) && !defined(DKC2_CONSOLE)
+    Dkc2RedirectLogsToFile();
+#endif
     return snesrecomp_desktop_main(&kGameHost, argc, argv);
 }
