@@ -39,6 +39,7 @@ include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 add_executable(DonkeyKongCountry2SNESRecomp
     ${SNESRECOMP_RUNNER_SOURCES}
     src/main.c
+    src/dkc2_update.c
     src/host_contract.c
     src/game_rtl.c
     src/gen_stubs.c

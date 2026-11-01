@@ -28,6 +28,26 @@ On first run:
 4. Press **Generate & rebuild**. The playable game is built into `build/` and
    started; run it from there afterwards.
 
+In the launcher, **Settings → Shader** lists the scanline, CRT and upscaler
+presets; choosing one switches the renderer to OpenGL automatically. A fresh
+install starts with **CRT Geom (curved)**; pick **None** for the plain picture.
+Your choice is saved in `config.ini` and kept.
+
+### Updates
+
+With **Check for updates on start** ticked (the default; on the launcher's main
+screen, next to **Skip launcher on boot**), the game asks GitHub for the latest
+release when it starts and offers to install a newer one. Accepting closes the
+game, downloads the new setup pack, copies it over the install folder and
+reopens the setup window: press **Generate & rebuild**. Nothing is deleted;
+`build\` (the rebuilt game, `saves\`, save states, `config.ini`,
+`keybinds.ini`) and `rom.cfg` are kept. Save states made by an older version
+may not load in a newer one; in-game saves always do. Untick the box to turn
+the check off (saved in `update.ini`). Versions before this one have no
+updater: update to it by hand once.
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+
 ## Status
 
 Boots through the copyright and title screen into the attract-mode demo
@@ -35,17 +55,16 @@ Boots through the copyright and title screen into the attract-mode demo
 saves and full play-through are not yet verified. See
 [Porting from here](#porting-from-here).
 
-Launcher **Settings → Shader** lists the scanline, CRT and upscaler presets;
-choosing one switches the renderer to OpenGL automatically.
-
 ### Framework patches
 
-`patches/` holds two changes to the `snesrecomp` submodule. Reapply them after
-updating the submodule:
+`patches/` holds changes to the `snesrecomp` and `recomp-ui` submodules.
+Reapply them after updating the submodules:
 
 ```sh
 git -C snesrecomp apply ../patches/snesrecomp-shader-forces-opengl.patch
 git -C snesrecomp apply ../patches/snesrecomp-nmi-idle-loop-wai.patch
+git -C snesrecomp apply ../patches/snesrecomp-raster-oam-and-hdma.patch
+git -C recomp-ui apply ../patches/recomp-ui-host-toggle.patch
 ```
 
 The second is required for this game: DKC2's NMI handler resets the stack and
@@ -54,6 +73,19 @@ the patch that loop runs to the interpreter's step cap every frame (black
 screen at ~4 fps). The patch also lets such a handler outlast a frame:
 DKC1's NMI uploads sound data with NMI off for several frames, and
 without it the upload was cut and the game froze on the intro screen.
+
+`snesrecomp-raster-oam-and-hdma.patch` is the renderer fix shared with the
+Super Mario Kart port. The renderer draws after the CPU frame and replays the
+frame's display writes line by line. It now keeps each sprite table (OAM) with
+the line it takes effect on, initializes HDMA channels enabled in vblank before
+line 1, and files a write made early in a line with the line before it, but
+never across the start of vblank: the NMI's first writes (screen mode,
+brightness) belong to the next frame. Filed one line early they were applied
+only after that frame was drawn, which in DKC2's boot showed the Rare logo
+over the Nintendo screen.
+
+`recomp-ui-host-toggle.patch` lets a title add one checkbox of its own beside
+"Skip launcher on boot"; this project uses it for the update check.
 
 ## ROM identity
 

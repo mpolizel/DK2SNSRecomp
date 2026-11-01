@@ -43,15 +43,24 @@
 #endif
 
 #include "config.h"
+#include "dkc2_update.h"
 #include <string.h>
 
 #ifdef RECOMP_LAUNCHER
 #include "recomp_launcher.h"
 /* The host switches to OpenGL whenever a shader is selected; say so where the
- * player picks the renderer. */
+ * player picks the renderer. The update check gets its checkbox here too. */
 static void Dkc2ConfigureLauncher(RecompLauncherCGameInfo *info)
 {
     info->renderer_note = "Shaders need OpenGL: choosing one switches the renderer to OpenGL.";
+#ifdef _WIN32
+    info->host_toggle_label = "Check for updates on start";
+    info->host_toggle_help =
+        "Look for a newer release on GitHub when the game starts and offer to "
+        "install it. Saves, save states and settings are kept.";
+    info->host_toggle_get = Dkc2UpdateGetEnabled;
+    info->host_toggle_set = Dkc2UpdateSetEnabled;
+#endif
 }
 #endif
 
@@ -85,14 +94,18 @@ static void Dkc2RedirectLogsToFile(void)
 #endif
 
 /* GLSL presets (assets/shaders) render only on the OpenGL presenter, so make
- * it this title's default. A renderer the player picked in the launcher is
- * saved to config.ini and left alone. */
+ * it this title's default, with the curved CRT preset on a fresh install.
+ * Whatever the player picks in the launcher is saved to config.ini and left
+ * alone. */
 static void Dkc2AfterConfig(void)
 {
     if (g_config.renderer[0] == '\0') {
         strcpy(g_config.renderer, "opengl");
         g_config.output_method = kOutputMethod_OpenGL;
+        if (!g_config.shader || !g_config.shader[0])
+            g_config.shader = "assets/shaders/CRT/Geom (curved).glslp";
     }
+    Dkc2UpdateCheckOnStart(SNES_GAME_VERSION);
 }
 
 static const SnesDesktopHostGame kGameHost = {
