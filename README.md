@@ -11,6 +11,18 @@ Run Donkey Kong Country 2 natively on Windows.
 > this project, in the repository or in any release. The recompiled C is
 > generated locally from your own copy and is never committed.
 
+## ☕ Keep the ports coming
+
+<p align="center">
+  <a href="https://buymeacoffee.com/mpolizel"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-support%20more%20ports-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
+</p>
+
+**This project is free and always will be.** Every port in this series,
+Donkey Kong Country 2 included, is built with many hours of AI-assisted reverse engineering,
+and that AI time is paid. If you enjoy playing it, a coffee at
+**[buymeacoffee.com/mpolizel](https://buymeacoffee.com/mpolizel)** keeps the AI running so **more SNES
+games can be ported to native Recomp**. Any amount helps, and thank you!
+
 ## Download (ready-to-run Windows build)
 
 Get the latest `donkeykongcountry2-<version>-windows-x64.zip` from the
@@ -209,3 +221,10 @@ in `patches/` apply to that framework and falls under its terms. The
 shaders under `assets/shaders/_libretro/` come from libretro/glsl-shaders and
 keep each author's license in their file headers. None of these cover the
 game data, which is not distributed here.
+
+---
+
+<p align="center">
+  Enjoying Donkey Kong Country 2 Recomp? <a href="https://buymeacoffee.com/mpolizel"><b>☕ Buy me a coffee</b></a> to help
+  bring the next SNES game to native Recomp.
+</p>
