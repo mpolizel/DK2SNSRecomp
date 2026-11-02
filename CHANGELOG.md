@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.2 — 2026-11-02
+
+### New
+- **Settings during play:** Ctrl+L (or Select+L3 on a controller) reopens the
+  launcher. Shader, window scale, volume and controls apply when you press
+  Resume, without restarting the game.
+- **Audio interpolation:** press **I** to cycle Gaussian (the console's own,
+  default), Cubic (crisper highs) and Sinc. It changes only what you hear;
+  the game, its echo and save states are unaffected. The choice is kept.
+- New upscaler shaders: **ScaleFX**, **NNEDI3 (neural)** and **NNEDI3
+  (neural, high)**.
+
+### Fixed
+- A bright horizontal line across the Gangplank Galleon island map. Every
+  HDMA raster effect started one line late; they now start on the line the
+  game asks for.
+- Choosing **None** as the shader during play no longer leaves a black
+  screen.
+- Multi-pass shaders that read the original game frame from a later pass
+  (ScaleFX) no longer draw black.
+
 ## 0.1.1 — 2026-11-01
 
 ### New

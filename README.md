@@ -31,7 +31,15 @@ On first run:
 In the launcher, **Settings → Shader** lists the scanline, CRT and upscaler
 presets; choosing one switches the renderer to OpenGL automatically. A fresh
 install starts with **CRT Geom (curved)**; pick **None** for the plain picture.
-Your choice is saved in `config.ini` and kept.
+Your choice is saved in `config.ini` and kept. The upscalers include
+**ScaleFX** and the neural **NNEDI3** presets.
+
+During play, **Ctrl+L** (or **Select+L3** on a controller) reopens the
+launcher: shader, window scale, volume and controls apply when you press
+**Resume**, without restarting the game. **I** cycles the audio interpolation
+between **Gaussian** (the console's own, the default), **Cubic** (crisper
+highs) and **Sinc**; it only changes what you hear, never the game, and the
+choice is saved in `audio_interpolation.txt`.
 
 ### Updates
 
@@ -64,6 +72,8 @@ Reapply them after updating the submodules:
 git -C snesrecomp apply ../patches/snesrecomp-shader-forces-opengl.patch
 git -C snesrecomp apply ../patches/snesrecomp-nmi-idle-loop-wai.patch
 git -C snesrecomp apply ../patches/snesrecomp-raster-oam-and-hdma.patch
+git -C snesrecomp apply ../patches/snesrecomp-audio-interpolation.patch
+git -C snesrecomp apply ../patches/snesrecomp-glsl-passprev-and-vao.patch
 git -C recomp-ui apply ../patches/recomp-ui-host-toggle.patch
 ```
 
@@ -82,7 +92,21 @@ line 1, and files a write made early in a line with the line before it, but
 never across the start of vblank: the NMI's first writes (screen mode,
 brightness) belong to the next frame. Filed one line early they were applied
 only after that frame was drawn, which in DKC2's boot showed the Rare logo
-over the Nintendo screen.
+over the Nintendo screen. It also counts HDMA's first transfer, made in V=0's
+H-blank, as a table line, as the hardware does. Every HDMA split landed one
+line late without it; on the Gangplank Galleon island map the palette and
+layer splits fall on the same table line, and the late one drew a bright line
+across the screen.
+
+`snesrecomp-audio-interpolation.patch` adds the Cubic and Sinc audio
+interpolation (I key). They resample the dry output only; the echo buffer,
+OUTX, pitch modulation and save states stay those of the console's Gaussian
+filter, so the game runs identically in every mode.
+
+`snesrecomp-glsl-passprev-and-vao.patch` fixes two shader bugs: a pass that
+reads `PassPrev<n>` back to the game frame got nothing (ScaleFX drew black),
+and switching to no shader mid-game drew a black screen because the shader
+path left the plain path's vertex attributes disabled.
 
 `recomp-ui-host-toggle.patch` lets a title add one checkbox of its own beside
 "Skip launcher on boot"; this project uses it for the update check.
@@ -180,8 +204,8 @@ Two players, one controller per port.
 
 This project's own source is under the MIT license in `LICENSE`. The
 framework carries its own terms (PolyForm Noncommercial 1.0.0) — see
-`snesrecomp/LICENSE` and `snesrecomp/THIRD_PARTY_ATTRIBUTION.md`; the change
-in `patches/` applies to that framework and falls under its terms. The
+`snesrecomp/LICENSE` and `snesrecomp/THIRD_PARTY_ATTRIBUTION.md`; the changes
+in `patches/` apply to that framework and falls under its terms. The
 shaders under `assets/shaders/_libretro/` come from libretro/glsl-shaders and
 keep each author's license in their file headers. None of these cover the
 game data, which is not distributed here.

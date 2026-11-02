@@ -1,8 +1,8 @@
 diff --git a/runner/src/beam_frame_driver.c b/runner/src/beam_frame_driver.c
-index d6086b35..37950417 100644
+index d5c4feea..f667e798 100644
 --- a/runner/src/beam_frame_driver.c
 +++ b/runner/src/beam_frame_driver.c
-@@ -245,6 +245,18 @@ void snes_beam_frame_driver_draw_ppu_frame_observed(
+@@ -249,10 +249,25 @@ void snes_beam_frame_driver_draw_ppu_frame_observed(
     * the beam must not also step it from inside guest register writes. */
    snes_set_hdma_beam_enabled(g_snes, false);
    ppu_rasterRenderBegin(g_ppu);
@@ -19,10 +19,20 @@ index d6086b35..37950417 100644
 +      dma_startDma(g_snes->dma, vblank_hdmaen, true);
 +  }
    dma_initHdma(g_snes->dma);
-   /* Hardware's V=0 init also performs each channel's first transfer before
-    * any visible pixel. */
+-  /* Hardware's V=0 init also performs each channel's first transfer before
+-   * any visible pixel. */
+-  dma_primeHdmaFirstLine(g_snes->dma);
++  /* The first transfer happens in V=0's H-blank and counts as a table line,
++   * as on every later line (bsnes hdmaRun runs for V=0..224). Writing it
++   * without counting it put every split one line late: Donkey Kong Country
++   * 2's island map changes its palette and its TM/TS on the same table line,
++   * and the late TM/TS drew a bright line across the screen. */
++  dma_doHdma(g_snes->dma);
+   for (line = 1; line <= 224; line++) {
+     uint8_t hdmaen;
+     /* A split is written in H-blank after its line is drawn, so the previous
 diff --git a/runner/src/snes/ppu.c b/runner/src/snes/ppu.c
-index 6f7fbd85..c61a7020 100644
+index 6f7fbd85..856642c7 100644
 --- a/runner/src/snes/ppu.c
 +++ b/runner/src/snes/ppu.c
 @@ -3259,6 +3259,16 @@ void ppu_set_vram_write_log_hook(PpuVramWriteLogHook hook) {

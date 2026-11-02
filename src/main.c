@@ -127,6 +127,9 @@ static const SnesDesktopHostGame kGameHost = {
     /* Battery-backed SRAM shows the launcher's SAVES panel. Leave NULL for a
      * title without one. The path is exe-relative. */
     .sram_path           = "saves/save.srm",
+    /* Ctrl+L (or Select+L3) reopens the launcher mid-game; shader, scale,
+     * volume and bindings apply on RESUME without a restart. */
+    .in_game_launcher    = 1,
 };
 
 #ifndef __ANDROID__
