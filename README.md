@@ -42,7 +42,7 @@ On first run:
 
 In the launcher, **Settings → Shader** lists the scanline, CRT and upscaler
 presets; choosing one switches the renderer to OpenGL automatically. A fresh
-install starts with **CRT Geom (curved)**; pick **None** for the plain picture.
+install starts with **CRT Lottes**; pick **None** for the plain picture.
 Your choice is saved in `config.ini` and kept. The upscalers include
 **ScaleFX** and the neural **NNEDI3** presets.
 

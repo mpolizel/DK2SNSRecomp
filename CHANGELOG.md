@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 — 2026-11-02
 
 ### New
+- A fresh install starts with the **CRT Lottes** shader. An install that
+  already has a shader chosen keeps it.
 - **Updates never cost you a save.** Before installing, the updater copies your
   in-game saves and save states to `save-backups\<date>_before_<version>\`.
   Save files are left out of the copy, and if they changed anyway the backup

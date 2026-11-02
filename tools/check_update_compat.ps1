@@ -16,10 +16,10 @@
     5. Checks that every file in build\saves is byte-identical, then loads the
        old state in the new build and records the same trace.
 
-  FAIL when a save file changed or the old state does not load (the new build
-  must continue the saved run). The traces after the load are expected to be
-  identical; when a release deliberately changes game logic they may diverge
-  later, which is reported as a warning to review, not a failure.
+  FAIL when a save file changed, the old state does not load in the new build,
+  or the new build, after loading it, does not run exactly like the previous
+  build does from the same state (WRAM trace). -AllowLogicChange turns that
+  last one into a warning for a release that changes game logic on purpose.
 
   Needs this checkout's generated code (src/gen, recomp/funcs.h) and rom.cfg,
   so run it after a local build. Nothing in the checkout is modified.
@@ -36,16 +36,34 @@ param(
   [string]$ToolsPath = 'C:\dkcr\toolsenv\Scripts',
   [int]$SaveFrame = 1500,
   [int]$LoadFrame = 200,
-  [int]$RunFrames = 900
+  [int]$RunFrames = 900,
+  # Keep a copy of the previous release's game in <WorkDir>\previous_build
+  # (and keep WorkDir on success) for before/after picture comparisons.
+  [switch]$KeepPreviousBuild,
+  # A release that changes game logic on purpose: after the load the builds
+  # may diverge (reported as a warning instead of a failure).
+  [switch]$AllowLogicChange
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$exeName = 'DonkeyKongCountry2SNESRecomp.exe'
+# The game target is the build's one *SNESRecomp.exe; the updater is the
+# title's src\*_update.c.
+$exeName = @(Get-ChildItem (Join-Path $repo 'build') -Filter '*SNESRecomp.exe' -ErrorAction SilentlyContinue)[0].Name
+$updaterSource = @(Get-ChildItem (Join-Path $repo 'src') -Filter '*_update.c')[0].Name
+if (-not $exeName -or -not $updaterSource) { throw 'cannot find build\*SNESRecomp.exe or src\*_update.c' }
 $Pack = (Resolve-Path $Pack).Path
-foreach ($p in 'src\gen', 'recomp\funcs.h', 'rom.cfg') {
+foreach ($p in 'src\gen', 'recomp\funcs.h') {
   if (-not (Test-Path (Join-Path $repo $p))) { throw "missing ${p}: build this checkout first" }
 }
-$rom = (Get-Content (Join-Path $repo 'rom.cfg') -Raw).Trim()
+# The setup's rom.cfg can name a ROM that has since moved; the game's own
+# build\rom.cfg is then the one that works.
+$rom = $null
+foreach ($cfgPath in (Join-Path $repo 'rom.cfg'), (Join-Path $repo 'build\rom.cfg')) {
+  if (-not (Test-Path $cfgPath)) { continue }
+  $candidate = (Get-Content $cfgPath -Raw).Trim()
+  if ($candidate -and (Test-Path -LiteralPath $candidate)) { $rom = $candidate; break }
+}
+if (-not $rom) { throw 'no rom.cfg names a ROM that exists: build and run this checkout first' }
 if (Test-Path $WorkDir) { Remove-Item -Recurse -Force $WorkDir }
 New-Item -ItemType Directory $WorkDir | Out-Null
 $install = Join-Path $WorkDir 'install'
@@ -95,7 +113,7 @@ function Get-SaveHashes {
 
 # The updater the previous release runs, without starting the setup program.
 function Get-OldUpdater {
-  $c = Get-Content (Join-Path $install 'src\dkc2_update.c') -Raw
+  $c = Get-Content (Join-Path $install "src\$updaterSource") -Raw
   # A string literal cannot hold a raw newline, so the first '";' that ends a
   # line ends the initializer.
   $body = [regex]::Match($c, '(?s)kUpdaterScript\[\] =(.*?)"\s*;[ \t]*\r?\n').Value
@@ -109,11 +127,19 @@ function Get-OldUpdater {
     Replace('Start-Sleep -Seconds 4', '').Replace("Read-Host 'Press Enter to close'", '')
 }
 
-# Frame of the save run that the first frame after the load reproduces.
-function Get-LoadedMatch([string]$TracePath, [hashtable]$SaveRun) {
-  foreach ($line in Get-Content $TracePath | Select-Object -Skip $LoadFrame -First 5) {
+# Did the load take effect? Best case the run continues the saved one exactly
+# (frame after the load = a save-run frame). Some titles keep a little state
+# outside the snapshot and do not continue bit-exactly even in the build that
+# saved it; the load still took effect when the run leaves the unloaded
+# timeline (the save run, identical to it up to $SaveFrame).
+function Get-LoadResult([string]$TracePath, [hashtable]$SaveRun, [string[]]$SaveLines) {
+  $after = @(Get-Content $TracePath | Select-Object -Skip $LoadFrame -First 5)
+  foreach ($line in $after) {
     $f = $line.Split(',')
-    if ($SaveRun.ContainsKey($f[1])) { return "frame $($f[0]) = save-run frame $($SaveRun[$f[1]])" }
+    if ($SaveRun.ContainsKey($f[1])) { return "continues the saved run (frame $($f[0]) = save-run frame $($SaveRun[$f[1]]))" }
+  }
+  for ($i = 0; $i -lt $after.Count; $i++) {
+    if ($after[$i] -ne $SaveLines[$LoadFrame + $i]) { return 'state loaded (the run left the unloaded timeline)' }
   }
   return $null
 }
@@ -127,7 +153,7 @@ foreach ($p in Get-ChildItem (Join-Path $install 'patches') -Filter *.patch | So
 }
 Copy-Item -Recurse (Join-Path $repo 'src\gen') (Join-Path $install 'src\gen') -Force
 Copy-Item (Join-Path $repo 'recomp\funcs.h') (Join-Path $install 'recomp\funcs.h') -Force
-Copy-Item (Join-Path $repo 'rom.cfg') (Join-Path $install 'rom.cfg') -Force
+$rom | Set-Content -NoNewline -Encoding ascii (Join-Path $install 'rom.cfg')
 Invoke-Build
 New-Item -ItemType Directory -Force $saves | Out-Null
 "[General]`r`nSkipLauncher = 1`r`n[Sound]`r`nEnableAudio = 0`r`n" | Set-Content -Encoding ascii (Join-Path $build 'config.ini')
@@ -138,14 +164,19 @@ Invoke-Game 'save' @{ RUN_FRAMES = "$($SaveFrame + 100)"; OVERLAY_SELFTEST = "$S
   OVERLAY_SELFTEST_SAVEONLY = '1'; STATE_TRACE = $saveTrace }
 $states = @(Get-ChildItem $saves -Filter *.sav)
 if (-not $states) { throw 'the previous build wrote no save state' }
-if (-not (Test-Path (Join-Path $saves 'save.srm'))) { throw 'the previous build wrote no save.srm' }
+$hasSram = (Select-String -Path (Join-Path $install 'src\main.c') -Pattern '\.sram_path\s*=\s*"' -Quiet)
+if ($hasSram -and -not (Test-Path (Join-Path $saves 'save.srm'))) { throw 'the previous build wrote no save.srm' }
 $saveRun = @{}
-Get-Content $saveTrace | ForEach-Object { $f = $_.Split(','); $saveRun[$f[1]] = $f[0] }
+$saveLines = @(Get-Content $saveTrace)
+$saveLines | ForEach-Object { $f = $_.Split(','); $saveRun[$f[1]] = $f[0] }
 $oldTrace = Join-Path $WorkDir 'trace_old.txt'
 Invoke-Game 'load_old' @{ RUN_FRAMES = "$RunFrames"; OVERLAY_SELFTEST_LOADAT = "$LoadFrame"; STATE_TRACE = $oldTrace }
-$oldMatch = Get-LoadedMatch $oldTrace $saveRun
+$oldMatch = Get-LoadResult $oldTrace $saveRun $saveLines
 if (-not $oldMatch) { throw 'the previous build cannot load its own state; the check itself is broken' }
 $before = Get-SaveHashes
+if ($KeepPreviousBuild) {
+  & robocopy.exe $build (Join-Path $WorkDir 'previous_build') /E /XD saves CMakeFiles /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+}
 
 Write-Host "== Update to $(Split-Path -Leaf $Pack)"
 $updater = Join-Path $WorkDir 'updater.ps1'
@@ -163,7 +194,7 @@ Invoke-Build
 $after = Get-SaveHashes
 $newTrace = Join-Path $WorkDir 'trace_new.txt'
 Invoke-Game 'load_new' @{ RUN_FRAMES = "$RunFrames"; OVERLAY_SELFTEST_LOADAT = "$LoadFrame"; STATE_TRACE = $newTrace }
-$newMatch = Get-LoadedMatch $newTrace $saveRun
+$newMatch = Get-LoadResult $newTrace $saveRun $saveLines
 
 $fail = @()
 if ($builds[0] -eq $builds[-1]) { $fail += 'the rebuild after the update produced the same game executable' }
@@ -179,12 +210,15 @@ for ($i = $LoadFrame; $i -lt [Math]::Min($old.Count, $new.Count); $i++) {
 }
 
 Write-Host ''
-Write-Host "saves checked: $($before.Count) file(s), state(s): $(($states | ForEach-Object Name) -join ', ')"
+Write-Host "saves checked: $($before.Count) file(s), state(s): $(($states | ForEach-Object Name) -join ', ')$(if (-not $hasSram) { ' (this game has no in-game save)' })"
 Write-Host "old build after load: $oldMatch"
 Write-Host "new build after load: $newMatch"
-if ($firstDiff) {
+if ($firstDiff -and $AllowLogicChange) {
   Write-Host "WARNING: after the load the new build diverges from the old one at frame $firstDiff." -ForegroundColor Yellow
-  Write-Host '         Expected only if this release changes game logic; review it.' -ForegroundColor Yellow
+  Write-Host '         Allowed by -AllowLogicChange; review that the game plays on correctly.' -ForegroundColor Yellow
+} elseif ($firstDiff) {
+  $fail += "after loading the old state the new build diverges from the old one at frame $firstDiff " +
+    '(pass -AllowLogicChange only for a release that changes game logic on purpose)'
 } else {
   Write-Host "after the load both builds are identical for $($RunFrames - $LoadFrame) frames"
 }
@@ -193,6 +227,6 @@ if ($fail) {
   Write-Host "evidence kept in $WorkDir"
   exit 1
 }
-Remove-Item -Recurse -Force $WorkDir
+if (-not $KeepPreviousBuild) { Remove-Item -Recurse -Force $WorkDir }
 Write-Host 'PASS: saves and save states survive the update' -ForegroundColor Green
 exit 0

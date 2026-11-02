@@ -94,7 +94,7 @@ static void Dkc2RedirectLogsToFile(void)
 #endif
 
 /* GLSL presets (assets/shaders) render only on the OpenGL presenter, so make
- * it this title's default, with the curved CRT preset on a fresh install.
+ * it this title's default, with the CRT Lottes preset on a fresh install.
  * Whatever the player picks in the launcher is saved to config.ini and left
  * alone. */
 static void Dkc2AfterConfig(void)
@@ -103,7 +103,7 @@ static void Dkc2AfterConfig(void)
         strcpy(g_config.renderer, "opengl");
         g_config.output_method = kOutputMethod_OpenGL;
         if (!g_config.shader || !g_config.shader[0])
-            g_config.shader = "assets/shaders/CRT/Geom (curved).glslp";
+            g_config.shader = "assets/shaders/CRT/Lottes.glslp";
     }
     Dkc2UpdateCheckOnStart(SNES_GAME_VERSION);
 }
