@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### New
+- **Updates never cost you a save.** Before installing, the updater copies your
+  in-game saves and save states to `save-backups\<date>_before_<version>\`.
+  Save files are left out of the copy, and if they changed anyway the backup
+  is put back. Saves and save states from earlier versions keep working.
+- Every release is now checked before publishing: a save and a save state made
+  in the previous version must survive the update and load in the new one.
+
 ## 0.1.2 — 2026-11-02
 
 ### New

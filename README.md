@@ -61,10 +61,20 @@ release when it starts and offers to install a newer one. Accepting closes the
 game, downloads the new setup pack, copies it over the install folder and
 reopens the setup window: press **Generate & rebuild**. Nothing is deleted;
 `build\` (the rebuilt game, `saves\`, save states, `config.ini`,
-`keybinds.ini`) and `rom.cfg` are kept. Save states made by an older version
-may not load in a newer one; in-game saves always do. Untick the box to turn
-the check off (saved in `update.ini`). Versions before this one have no
-updater: update to it by hand once.
+`keybinds.ini`) and `rom.cfg` are kept. Untick the box to turn the check off
+(saved in `update.ini`). Version 0.1.0 has no updater: update from it by hand
+once.
+
+**Your saves are never lost or broken by an update.** In-game saves and save
+states made by any earlier release keep working in every later one. Before
+installing, the updater copies `build\saves\` to
+`save-backups\<date>_before_<version>\` and never deletes those copies; save
+files are left out of the copy, and if they changed anyway the backup is put
+back. Every release is checked against the one before it with
+`tools/check_update_compat.ps1`. That script builds the previous release,
+makes an in-game save and a save state with it, installs the new pack with the
+previous release's own updater and rebuilds. It fails unless every save file
+is byte-identical and the new build continues the old save state.
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 

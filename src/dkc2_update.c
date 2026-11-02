@@ -25,7 +25,13 @@
  * game and bring the wizard back after every rebuild.) The setup reads the
  * ROM path from the root rom.cfg; when that is missing or stale but the
  * game's build\rom.cfg names a ROM that exists, the root one is pointed at it
- * so the player is never asked for the ROM again. */
+ * so the player is never asked for the ROM again.
+ *
+ * An update must never cost the player a save. Before copying, build\saves
+ * (in-game saves and save states) is copied to save-backups\<time>_before_<v>;
+ * nothing ever deletes those copies. Save files are excluded from the copy by
+ * name and directory, and if build\saves differs afterwards anyway, the
+ * backup is put back. */
 static const char kUpdaterScript[] =
   "param([string]$Root, [string]$Url, [int]$WaitPid, [string]$Version)\r\n"
   "$ErrorActionPreference = 'Stop'\r\n"
@@ -44,10 +50,26 @@ static const char kUpdaterScript[] =
   "  Expand-Archive -Path $zip -DestinationPath (Join-Path $work 'x')\r\n"
   "  $src = Get-ChildItem (Join-Path $work 'x') -Directory | Select-Object -First 1\r\n"
   "  if (-not $src) { throw 'the update package is empty' }\r\n"
+  "  $saves = Join-Path $Root 'build\\saves'\r\n"
+  "  $backup = $null\r\n"
+  "  $hashes = { @(Get-ChildItem $saves -Recurse -File | Sort-Object FullName | "
+      "ForEach-Object { $_.FullName + '|' + (Get-FileHash $_.FullName).Hash }) -join \"`n\" }\r\n"
+  "  if (Test-Path $saves) {\r\n"
+  "    $backup = Join-Path $Root ('save-backups\\' + (Get-Date -Format 'yyyy-MM-dd_HHmmss') + \"_before_$Version\")\r\n"
+  "    Write-Host \"Backing up your saves and save states to $backup\"\r\n"
+  "    & robocopy.exe $saves $backup /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null\r\n"
+  "    if ($LASTEXITCODE -ge 8) { throw \"the save backup failed (robocopy exit $LASTEXITCODE)\" }\r\n"
+  "    $before = & $hashes\r\n"
+  "  }\r\n"
   "  Write-Host 'Installing (saves, save states and settings are kept)...'\r\n"
   "  & robocopy.exe $src.FullName $Root /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP "
-      "/XF config.ini keybinds.ini rom.cfg update.ini *.srm *.state | Out-Null\r\n"
+      "/XF config.ini keybinds.ini rom.cfg update.ini *.srm *.sav *.thumb *.bak *.state "
+      "/XD saves save-backups | Out-Null\r\n"
   "  if ($LASTEXITCODE -ge 8) { throw \"copy failed (robocopy exit $LASTEXITCODE)\" }\r\n"
+  "  if ($backup -and (& $hashes) -ne $before) {\r\n"
+  "    & robocopy.exe $backup $saves /E /IS /IT /R:2 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null\r\n"
+  "    Write-Host 'Your saves were changed during the copy and have been restored from the backup.' -ForegroundColor Yellow\r\n"
+  "  }\r\n"
   "  $romCfg = Join-Path $Root 'rom.cfg'\r\n"
   "  $gameRomCfg = Join-Path $Root 'build\\rom.cfg'\r\n"
   "  $rootRom = if (Test-Path $romCfg) { (Get-Content $romCfg -Raw).Trim() } else { '' }\r\n"
@@ -69,6 +91,7 @@ static const char kUpdaterScript[] =
   "  Write-Host ''\r\n"
   "  Write-Host \"Update failed: $_\" -ForegroundColor Red\r\n"
   "  Write-Host 'Your game, saves and settings were not changed by the failed step.'\r\n"
+  "  if ($backup) { Write-Host \"A copy of your saves is in $backup\" }\r\n"
   "  Read-Host 'Press Enter to close'\r\n"
   "}\r\n";
 
@@ -240,9 +263,8 @@ void Dkc2UpdateCheckOnStart(const char *current_version) {
            L"Donkey Kong Country 2 Recomp %ls is available (you have %ls).\n\n"
            L"Update now? The game closes, the update is downloaded and installed, "
            L"and the setup window opens to rebuild the game.\n\n"
-           L"Your in-game saves, save states and settings are kept. Save states "
-           L"made by an older version may not load in the new one; in-game saves "
-           L"always do.\n\n"
+           L"Your in-game saves, save states and settings are kept, and a copy "
+           L"of your saves is made first in the save-backups folder.\n\n"
            L"You can turn this check off on the launcher's main screen "
            L"(\"Check for updates on start\", next to \"Skip launcher on boot\").",
            wtag, wcur);
