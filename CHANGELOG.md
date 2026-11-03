@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 — 2026-11-03
+
+### Fixed
+- Preventive fix for a black screen after saving. Donkey Kong Country could
+  stay on a black screen (sound still playing) after saving at Candy's. This
+  game runs on the same engine and gets the same fix, so saving at
+  Kong Kollege cannot freeze for that reason.
+
 ## 0.1.3 — 2026-11-02
 
 ### New

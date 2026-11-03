@@ -93,6 +93,7 @@ Reapply them after updating the submodules:
 ```sh
 git -C snesrecomp apply ../patches/snesrecomp-shader-forces-opengl.patch
 git -C snesrecomp apply ../patches/snesrecomp-nmi-idle-loop-wai.patch
+git -C snesrecomp apply ../patches/snesrecomp-nmi-wai-in-handler.patch
 git -C snesrecomp apply ../patches/snesrecomp-raster-oam-and-hdma.patch
 git -C snesrecomp apply ../patches/snesrecomp-audio-interpolation.patch
 git -C snesrecomp apply ../patches/snesrecomp-glsl-passprev-and-vao.patch
@@ -105,6 +106,14 @@ the patch that loop runs to the interpreter's step cap every frame (black
 screen at ~4 fps). The patch also lets such a handler outlast a frame:
 DKC1's NMI uploads sound data with NMI off for several frames, and
 without it the upload was cut and the game froze on the intro screen.
+
+`snesrecomp-nmi-wai-in-handler.patch` makes any `WAI` inside an interrupt
+handler halt until the next interrupt, as on hardware. In Donkey Kong Country
+(same Rare engine) a `WAI` left inside NMI after saving at Candy's was skipped,
+the interpreter spun to its step cap and the screen stayed black; this game
+gets the same fix preventively. With the same input, its memory matches the
+previous build frame for frame (a 3-frame timing difference in the boot logos
+of Donkey Kong Country 2 reconverges at once).
 
 `snesrecomp-raster-oam-and-hdma.patch` is the renderer fix shared with the
 Super Mario Kart port. The renderer draws after the CPU frame and replays the
