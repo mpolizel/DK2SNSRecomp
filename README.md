@@ -42,7 +42,8 @@ On first run:
 
 In the launcher, **Settings → Shader** lists the scanline, CRT and upscaler
 presets; choosing one switches the renderer to OpenGL automatically. A fresh
-install starts with **CRT Lottes**; pick **None** for the plain picture.
+install starts with no shader (the plain picture), the lightest option for
+any graphics card; pick a CRT or upscaler preset there if yours has room.
 Your choice is saved in `config.ini` and kept. The upscalers include
 **ScaleFX** and the neural **NNEDI3** presets.
 
@@ -52,6 +53,11 @@ launcher: shader, window scale, volume and controls apply when you press
 between **Gaussian** (the console's own, the default), **Cubic** (crisper
 highs) and **Sinc**; it only changes what you hear, never the game, and the
 choice is saved in `audio_interpolation.txt`.
+
+On laptops with two graphics cards (NVIDIA Optimus, AMD switchable graphics)
+the game asks the driver for the dedicated one. If it still runs slowly,
+set the game's executable to **High performance** in Windows Settings →
+System → Display → Graphics.
 
 ### Updates
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.5 — 2026-11-03
+
+### Changed
+- A fresh install starts with **no shader** (the plain picture), the lightest
+  option. A full-screen CRT shader made the game drop frames on weaker laptops.
+  Pick CRT Lottes or another preset under Settings → Shader; your choice is
+  still saved and kept. An install that already has a shader keeps it.
+- On laptops with two graphics cards (NVIDIA Optimus, AMD switchable
+  graphics), the game now asks for the **dedicated graphics card** instead of
+  the integrated one.
+
 ## 0.1.4 — 2026-11-03
 
 ### Fixed
