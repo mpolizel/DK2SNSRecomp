@@ -1,0 +1,20 @@
+diff --git a/runner/src/common_rtl.c b/runner/src/common_rtl.c
+index 777228dc..afd6ae5b 100644
+--- a/runner/src/common_rtl.c
++++ b/runner/src/common_rtl.c
+@@ -1728,6 +1736,15 @@ void WriteReg(uint16 reg, uint8 value) {
+     RtlApuWrite(reg, value);
+   } else if (reg >= 0x2180 && reg < 0x2184) {
+     snes_writeBBus(g_snes, reg & 0xff, value);
++  } else if (reg == 0x4016) {
++    /* JOYWR -- the manual-read strobe. ReadRegOpenBus already routes the
++     * $4016/$4017 reads to the joypad, but the strobe was dropped here, so
++     * the shift counters were never reset: a game that reads the pads by
++     * hand (Bart's Nightmare's doors and nightmares, $00:E11C) got its
++     * sixteen bits once and then 1s for every button, forever -- it chose
++     * a door on its own and fell into its pause loop, waiting for a Start
++     * press that could no longer register. */
++    snes_writeReg(g_snes, reg, value);
+   } else if (reg >= 0x4200 && reg < 0x4220) {
+     if (reg == 0x420C) {
+       /* The raster journal records it in snes_writeReg. */

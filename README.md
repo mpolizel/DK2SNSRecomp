@@ -3,6 +3,8 @@
 A native recompilation of **Donkey Kong Country 2** (USA), built on
 [snesrecomp](https://github.com/RetroPortingToolKit/snesrecomp).
 
+<a href="https://recomplauncher.com/game/dk2snsrecomp"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
 Run Donkey Kong Country 2 natively on Windows.
 
 
@@ -39,6 +41,11 @@ On first run:
    USA (En,Fr), CRC32 `006364db`.
 4. Press **Generate & rebuild**. The playable game is built into `build/` and
    started; run it from there afterwards.
+
+[RecompLauncher](https://recomplauncher.com) can install it too: the release
+carries a `recomplauncher.json`, so the launcher asks for your ROM, opens this
+same setup with it already picked, and shows the window, picture and sound
+settings on the game's page.
 
 In the launcher, **Settings → Shader** lists the scanline, CRT and upscaler
 presets; choosing one switches the renderer to OpenGL automatically. A fresh
@@ -97,12 +104,17 @@ saves and full play-through are not yet verified. See
 Reapply them after updating the submodules:
 
 ```sh
-git -C snesrecomp apply ../patches/snesrecomp-shader-forces-opengl.patch
+git -C snesrecomp apply ../patches/snesrecomp-apu-first-read-timeline.patch
+git -C snesrecomp apply ../patches/snesrecomp-audio-interpolation.patch
+git -C snesrecomp apply ../patches/snesrecomp-glsl-passprev-and-vao.patch
+git -C snesrecomp apply ../patches/snesrecomp-joypad-manual-strobe.patch
+git -C snesrecomp apply ../patches/snesrecomp-mosaic-frame-model.patch
 git -C snesrecomp apply ../patches/snesrecomp-nmi-idle-loop-wai.patch
 git -C snesrecomp apply ../patches/snesrecomp-nmi-wai-in-handler.patch
 git -C snesrecomp apply ../patches/snesrecomp-raster-oam-and-hdma.patch
-git -C snesrecomp apply ../patches/snesrecomp-audio-interpolation.patch
-git -C snesrecomp apply ../patches/snesrecomp-glsl-passprev-and-vao.patch
+git -C snesrecomp apply ../patches/snesrecomp-resume-state-restart.patch
+git -C snesrecomp apply ../patches/snesrecomp-shader-forces-opengl.patch
+git -C snesrecomp apply ../patches/snesrecomp-state-load-raster-reset.patch
 git -C recomp-ui apply ../patches/recomp-ui-host-toggle.patch
 ```
 
@@ -144,6 +156,50 @@ filter, so the game runs identically in every mode.
 reads `PassPrev<n>` back to the game frame got nothing (ScaleFX drew black),
 and switching to no shader mid-game drew a black screen because the shader
 path left the plain path's vertex attributes disabled.
+
+`snesrecomp-apu-first-read-timeline.patch` lets the sound chip run from power
+on when the game reads its ports before writing them. Kirby Super Star read
+the sound port once, right after the SA-1 finishes its start-up, and uploads
+its sound driver only if the chip's boot ROM answers; the framework started
+the sound chip's clock at the first port write, so the read found nothing and
+the game waited forever on a black screen.
+
+`snesrecomp-joypad-manual-strobe.patch` passes the manual-read strobe
+($4016 write) to the controller. The reads already reached it, the strobe did
+not, so a game that reads the pad by hand got its sixteen buttons once and then
+every button held, for good. Bart's Nightmare reads the pad that way in the
+doors and the nightmares: it chose a door by itself and, inside a nightmare,
+fell into its pause screen and waited for a Start press that could never come
+(the picture frozen, the music still playing).
+
+`snesrecomp-mosaic-frame-model.patch` builds the mosaic table on every visible
+line. The optimized renderer built it only on line 0, which frame-model hosts
+never render, so every line of a mosaic-enabled layer sampled the layer's
+first row.
+
+`snesrecomp-nmi-idle-loop-wai.patch` and `snesrecomp-nmi-wai-in-handler.patch`
+make a `WAI` halt until the next interrupt, as on hardware, in the main loop
+and inside an interrupt handler; without them the interpreter could spin to
+its step cap and freeze the screen.
+
+`snesrecomp-resume-state-restart.patch` makes a setting that needs a restart
+come back to the same moment. The in-game launcher saves `saves\resume.sav`,
+restarts and loads it before the first frame, when no session exists yet. A
+save state holds the machine but not the CPU half's registers or resume
+point (a load during play keeps the session's own, the game's idle loop), so
+the frame driver booted from the reset vector over it. The restart file is
+now written in the rollback format (machine plus execution residue), and the
+frame driver takes the interpreter's resume point at the start of a frame.
+Save-state slots keep their format.
+
+`snesrecomp-shader-forces-opengl.patch` switches the renderer to OpenGL when a
+shader is picked, since the presets only run there.
+
+`snesrecomp-state-load-raster-reset.patch` re-arms the raster journal when a
+save state loads. The journal keeps the register file as the last field
+started and puts it back before drawing, so after a load the previous scene's
+BG mode, tilemaps and windows replaced the state's; a scene that sets them only
+once (Bart's Nightmare's title, its doors) stayed garbled until it changed.
 
 `recomp-ui-host-toggle.patch` lets a title add one checkbox of its own beside
 "Skip launcher on boot"; this project uses it for the update check.

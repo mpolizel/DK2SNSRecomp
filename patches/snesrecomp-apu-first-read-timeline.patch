@@ -1,0 +1,26 @@
+diff --git a/runner/src/snes/apu.c b/runner/src/snes/apu.c
+index 991758d9..bbd133e5 100644
+--- a/runner/src/snes/apu.c
++++ b/runner/src/snes/apu.c
+@@ -154,6 +154,21 @@ bool apu_runUntilPortQueueEmpty(Apu* apu, uint32_t max_cycles) {
+ 
+ bool apu_runToGuestCycle(Apu* apu, uint64_t guest_cycle,
+                          uint32_t max_cycles) {
++  /* A port READ before the CPU has written any port: the timeline is only
++   * anchored by apu_schedulePortWrite, so the SPC stayed frozen in its reset
++   * state and the read saw $0000. Shortly after power-on the SPC has been
++   * running for exactly as long as the CPU, so anchor at the origin (guest 0
++   * = SPC 0). Kirby Super Star reads $2140 once, about 8.7 ms after reset
++   * (after waiting for the SA-1), and only uploads its sound driver when it
++   * sees the IPL's $BBAA; otherwise it waits forever for a driver that is not
++   * there. Later reads before a write keep the old behavior. */
++  if (!apu->portTimeValid && guest_cycle < 2 * 17088u) {
++    apu->portGuestAnchor = 0;
++    apu->portTargetAnchor = 0;
++    apu->portLastGuest = 0;
++    apu->portLastTarget = 0;
++    apu->portTimeValid = true;
++  }
+   if (!apu->portTimeValid || guest_cycle < apu->portGuestAnchor)
+     return true;
+ 

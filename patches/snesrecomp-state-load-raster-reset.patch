@@ -1,0 +1,19 @@
+diff --git a/runner/src/common_rtl.c b/runner/src/common_rtl.c
+index 777228dc..afd6ae5b 100644
+--- a/runner/src/common_rtl.c
++++ b/runner/src/common_rtl.c
+@@ -1131,6 +1131,14 @@ bool RtlLoadSnapshotFromMemory(const void *data, size_t size) {
+   if (memory.error) return false;
+   g_snes->beamMasterLast = g_cpu.master_cycles;
+   if(!s_rollback_load) snes_mod_audio_stop_all();
++  /* The raster journal holds the register file as the last field started,
++   * and its render puts that file back into the live PPU before replaying
++   * the field's writes. Kept across a load, the old timeline's registers
++   * replaced the state's: a scene that sets BG mode, tilemaps or windows once
++   * and never again (Bart's Nightmare's title, its doors) stayed drawn with
++   * the previous scene's for good. Re-arm it from the loaded registers. A
++   * rollback is the same timeline and keeps it. */
++  if(!s_rollback_load) ppu_rasterReset();
+   PpuResetWidescreenOamHistory(g_snes->ppu);
+   if (g_rtl_game_info && g_rtl_game_info->on_state_loaded)
+     g_rtl_game_info->on_state_loaded(hdr[1]);
