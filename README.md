@@ -177,11 +177,6 @@ line. The optimized renderer built it only on line 0, which frame-model hosts
 never render, so every line of a mosaic-enabled layer sampled the layer's
 first row.
 
-`snesrecomp-nmi-idle-loop-wai.patch` and `snesrecomp-nmi-wai-in-handler.patch`
-make a `WAI` halt until the next interrupt, as on hardware, in the main loop
-and inside an interrupt handler; without them the interpreter could spin to
-its step cap and freeze the screen.
-
 `snesrecomp-resume-state-restart.patch` makes a setting that needs a restart
 come back to the same moment. The in-game launcher saves `saves\resume.sav`,
 restarts and loads it before the first frame, when no session exists yet. A
