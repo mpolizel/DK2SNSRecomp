@@ -1,0 +1,229 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "Donkey Kong Country 2 Recomp",
+  "repo": "mpolizel/DK2SNSRecomp",
+  "game": {
+    "kind": "iso",
+    "label": "Your ROM of Donkey Kong Country 2: Diddy's Kong Quest for the Super NES, USA release (.sfc or .smc, not zipped). The first start recompiles the game from it, which takes a few minutes.",
+    "dumps": [
+      {
+        "name": "USA",
+        "size": 4194304,
+        "crc32": "006364db"
+      }
+    ]
+  },
+  "start": {
+    "program": [
+      "DonkeyKongCountry2SNESRecomp.exe"
+    ],
+    "args": [
+      "--launcher",
+      "--rom",
+      "{game}"
+    ]
+  },
+  "saves": [
+    "{install}/build/saves",
+    "{install}/build/config.ini",
+    "{install}/build/keybinds.ini"
+  ],
+  "config": [
+    {
+      "id": "main",
+      "format": "ini",
+      "file": [
+        {
+          "path": "{install}/build/config.ini"
+        }
+      ]
+    }
+  ],
+  "folders": {
+    "saves": [
+      {
+        "path": "{install}/build/saves"
+      }
+    ],
+    "logs": [
+      {
+        "path": "{install}/build",
+        "if": "{install}/build/DonkeyKongCountry2SNESRecomp.log"
+      },
+      {
+        "path": "{install}"
+      }
+    ],
+    "backups": [
+      {
+        "path": "{install}/save-backups"
+      }
+    ]
+  },
+  "settings": [
+    {
+      "id": "window",
+      "label": "Window",
+      "help": "Fullscreen fills your screen and lets you switch apps quickly. Exclusive gives the game the screen to itself.",
+      "choices": [
+        {
+          "label": "Windowed",
+          "set": {
+            "Graphics/Fullscreen": "0"
+          }
+        },
+        {
+          "label": "Fullscreen",
+          "set": {
+            "Graphics/Fullscreen": "1"
+          }
+        },
+        {
+          "label": "Exclusive",
+          "set": {
+            "Graphics/Fullscreen": "2"
+          }
+        }
+      ],
+      "defaults": {
+        "Graphics/Fullscreen": "0"
+      }
+    },
+    {
+      "id": "window_scale",
+      "label": "Window size",
+      "help": "How many times the console's 256x224 picture the window is.",
+      "choices": [
+        {
+          "label": "2x",
+          "set": {
+            "Graphics/WindowScale": "2"
+          }
+        },
+        {
+          "label": "3x",
+          "set": {
+            "Graphics/WindowScale": "3"
+          }
+        },
+        {
+          "label": "4x",
+          "set": {
+            "Graphics/WindowScale": "4"
+          }
+        },
+        {
+          "label": "5x",
+          "set": {
+            "Graphics/WindowScale": "5"
+          }
+        }
+      ],
+      "defaults": {
+        "Graphics/WindowScale": "3"
+      },
+      "when": {
+        "Graphics/Fullscreen": "0"
+      }
+    },
+    {
+      "id": "aspect",
+      "label": "Picture shape",
+      "help": "Keep the console's shape, or stretch the picture to fill the window.",
+      "choices": [
+        {
+          "label": "Console's shape",
+          "set": {
+            "Graphics/IgnoreAspectRatio": "0"
+          }
+        },
+        {
+          "label": "Stretch",
+          "set": {
+            "Graphics/IgnoreAspectRatio": "1"
+          }
+        }
+      ],
+      "defaults": {
+        "Graphics/IgnoreAspectRatio": "0"
+      }
+    },
+    {
+      "id": "sprites",
+      "label": "Sprite limit",
+      "help": "The console hides sprites when too many share a line, which makes them flicker. Off shows them all.",
+      "choices": [
+        {
+          "label": "Off",
+          "set": {
+            "Graphics/NoSpriteLimits": "1"
+          }
+        },
+        {
+          "label": "Like the console",
+          "set": {
+            "Graphics/NoSpriteLimits": "0"
+          }
+        }
+      ],
+      "defaults": {
+        "Graphics/NoSpriteLimits": "1"
+      }
+    },
+    {
+      "id": "audio",
+      "label": "Sound",
+      "help": "Turn the game's sound and music off or on.",
+      "choices": [
+        {
+          "label": "On",
+          "set": {
+            "Sound/EnableAudio": "1"
+          }
+        },
+        {
+          "label": "Off",
+          "set": {
+            "Sound/EnableAudio": "0"
+          }
+        }
+      ],
+      "defaults": {
+        "Sound/EnableAudio": "1"
+      }
+    },
+    {
+      "id": "volume",
+      "label": "Volume",
+      "help": "The game's volume, from 0 to 100.",
+      "slider": {
+        "key": "Sound/Volume",
+        "min": 0,
+        "max": 100,
+        "step": 5,
+        "format": "%d"
+      },
+      "defaults": {
+        "Sound/Volume": "100"
+      },
+      "when": {
+        "Sound/EnableAudio": "1"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "saves",
+      "label": "Save states",
+      "help": "Your save states (the cartridge has no battery save).",
+      "open": "saves"
+    },
+    {
+      "id": "backups",
+      "label": "Save backups",
+      "help": "Copies of your saves the game's own updater makes before installing a new version.",
+      "open": "backups"
+    }
+  ]
+}
