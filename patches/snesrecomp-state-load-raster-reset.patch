@@ -1,8 +1,8 @@
 diff --git a/runner/src/common_rtl.c b/runner/src/common_rtl.c
-index 777228dc..afd6ae5b 100644
+index e007006e..737a01e5 100644
 --- a/runner/src/common_rtl.c
 +++ b/runner/src/common_rtl.c
-@@ -1131,6 +1131,14 @@ bool RtlLoadSnapshotFromMemory(const void *data, size_t size) {
+@@ -1240,6 +1240,14 @@ bool RtlLoadSnapshotFromMemory(const void *data, size_t size) {
    if (memory.error) return false;
    g_snes->beamMasterLast = g_cpu.master_cycles;
    if(!s_rollback_load) snes_mod_audio_stop_all();

@@ -1,0 +1,345 @@
+diff --git a/runner/src/common_rtl.c b/runner/src/common_rtl.c
+index 737a01e5..32735373 100644
+--- a/runner/src/common_rtl.c
++++ b/runner/src/common_rtl.c
+@@ -417,8 +417,11 @@ static uint64_t fp_fnv1a(const uint8_t *p, size_t n) {
+  *     automatic-read words). Older files load with no multitap configured,
+  *     which is the pre-multitap two-pad machine exactly. */
+ #define RTL_SAV_VERSION 11u /* Canonical access-exact SPC/DSP timing state. */
+-/* States are build-specific. Older blobs lack required live DSP phases. */
+-#define RTL_SAV_VERSION_MIN 11u
++/* v10 states (every release before the access-exact SPC/DSP timing) still
++ * load: they lack only the new timing model's phases, which
++ * snes_upgrade_v10_state rebuilds from the old model's state. A player's
++ * save states must survive an update. */
++#define RTL_SAV_VERSION_MIN 10u
+ /* Independent of sizes supplied by an untrusted snapshot or title payload. */
+ #define RTL_SAV_MAX_SIZE (16u * 1024u * 1024u)
+ 
+@@ -545,6 +548,9 @@ static void snapshot_check_func(SaveLoadInfo *sli, void *data, size_t n) {
+ }
+ 
+ static bool snapshot_check_guest(const void *data, size_t size, uint32 version) {
++  /* apu_saveload already depends on the file's version (v10 has no timing
++   * debt), so set it before the first serializer, not just for snes_saveload. */
++  snes_saveload_set_version(version);
+   Snes staged = *g_snes;
+   Cpu cpu = *staged.cpu;
+   Dma dma = *staged.dma;
+@@ -1190,6 +1196,20 @@ bool RtlIsRollbackLoad(void) {return s_rollback_load;}
+ static bool s_rollback_save;
+ bool RtlIsRollbackSave(void) {return s_rollback_save;}
+ 
++/* A v10 state loaded into this build: the APU's timer/DSP advance debt and
++ * the SPC's access cursor did not exist (v10 states stand at an opcode
++ * boundary, so both are zero), and the per-clock S-DSP is rebuilt from the
++ * sample-step model the state carried. */
++static void snes_upgrade_v10_state(Snes *snes) {
++  Apu *apu = snes->apu;
++  memset(apu->timerAhead, 0, sizeof(apu->timerAhead));
++  apu->dspAhead = 0;
++  Spc *spc = apu->spc;
++  memset((uint8_t *)spc + offsetof(Spc, cyclesUsed), 0,
++         offsetof(Spc, dry) - offsetof(Spc, cyclesUsed));
++  dsp_clockImportLegacy(apu->dsp);
++}
++
+ bool RtlLoadSnapshotFromMemory(const void *data, size_t size) {
+   if (!data || size > RTL_SAV_MAX_SIZE) return false;
+   if (g_rtl_game_info && g_rtl_game_info->snapshot_allowed &&
+@@ -1225,6 +1245,8 @@ bool RtlLoadSnapshotFromMemory(const void *data, size_t size) {
+   };
+   snes_saveload_set_version(hdr[1]);
+   snes_saveload(g_snes, &memory.base);
++  if (hdr[1] < 11 && !memory.error)
++    snes_upgrade_v10_state(g_snes);
+   /* Match file load: only consume a game chunk when trailing bytes remain.
+    * Always calling state_load_extra at EOF zero-fills the chunk (short-read
+    * sets error on MemorySli, but games that memset-then-read still see
+@@ -1462,6 +1484,82 @@ static void rtl_rb_residue_apply(const RtlRollbackResidue *r) {
+ 
+ static RtlRollbackResidue s_loaded_execution;
+ 
++/* The residue as v10-era builds wrote it (RTL_RB_RESIDUE_VERSION 7): the
++ * same fields, with the PPU part before v8 added the port/latch state. */
++typedef struct PpuRollbackResidueV7 {
++  uint8_t  oamAdr;
++  uint8_t  oamInHigh;
++  uint8_t  oamSecondWrite;
++  uint8_t  oamBuffer;
++  int16_t  wsOamMotionLastLine;
++  int16_t  wsOamMotionX[128];
++  uint32_t wsOamMotionSig[128];
++  uint8_t  wsOamMotionSeen[16];
++  uint8_t  wsOamMotionGrace[128];
++} PpuRollbackResidueV7;
++typedef struct RtlRollbackResidueV7 {
++  uint32 magic;
++  uint32 version;
++  CpuState cpu;
++  ApuPortSched apu_port;
++  uint64_t beam_master_last;
++  uint64_t apu_pace_cycles_estimate;
++  uint64_t apu_last_sync_cycles;
++  uint64_t apu_last_sync_master;
++  uint64_t apu_frame_start_master;
++  uint64_t main_cpu_cycles_estimate;
++  int      frame_counter;
++  uint8    apu_frame_time_valid;
++  uint8    pad[3];
++  uint8    interp[1024];
++  uint8    memsel;
++  uint8    last_hdmaen;
++  uint8    interp_apu_driving;
++  uint8    pad_v3;
++  uint64_t refresh_phase;
++  uint64_t refresh_charged_upto;
++  uint8    hdma_pending_init;
++  uint8    pad_v5[7];
++  PpuRollbackResidueV7 ppu_rb;
++  RtlApuFrameClock apu_frame_clock;
++} RtlRollbackResidueV7;
++
++/* v7 -> current. The port/latch state v8 added was never part of a v7
++ * state: a v7 load kept the session's own, and so does this one. */
++static void rtl_residue_from_v7(const RtlRollbackResidueV7 *o, RtlRollbackResidue *r) {
++  memset(r, 0, sizeof(*r));
++  r->magic = o->magic;
++  r->version = RTL_RB_RESIDUE_VERSION;
++  r->cpu = o->cpu;
++  r->apu_port = o->apu_port;
++  r->beam_master_last = o->beam_master_last;
++  r->apu_pace_cycles_estimate = o->apu_pace_cycles_estimate;
++  r->apu_last_sync_cycles = o->apu_last_sync_cycles;
++  r->apu_last_sync_master = o->apu_last_sync_master;
++  r->apu_frame_start_master = o->apu_frame_start_master;
++  r->main_cpu_cycles_estimate = o->main_cpu_cycles_estimate;
++  r->frame_counter = o->frame_counter;
++  r->apu_frame_time_valid = o->apu_frame_time_valid;
++  memcpy(r->interp, o->interp, sizeof(r->interp));
++  r->memsel = o->memsel;
++  r->last_hdmaen = o->last_hdmaen;
++  r->interp_apu_driving = o->interp_apu_driving;
++  r->refresh_phase = o->refresh_phase;
++  r->refresh_charged_upto = o->refresh_charged_upto;
++  r->hdma_pending_init = o->hdma_pending_init;
++  ppu_rb_residue_get(g_snes->ppu, &r->ppu_rb);
++  r->ppu_rb.oamAdr = o->ppu_rb.oamAdr;
++  r->ppu_rb.oamInHigh = o->ppu_rb.oamInHigh;
++  r->ppu_rb.oamSecondWrite = o->ppu_rb.oamSecondWrite;
++  r->ppu_rb.oamBuffer = o->ppu_rb.oamBuffer;
++  r->ppu_rb.wsOamMotionLastLine = o->ppu_rb.wsOamMotionLastLine;
++  memcpy(r->ppu_rb.wsOamMotionX, o->ppu_rb.wsOamMotionX, sizeof(r->ppu_rb.wsOamMotionX));
++  memcpy(r->ppu_rb.wsOamMotionSig, o->ppu_rb.wsOamMotionSig, sizeof(r->ppu_rb.wsOamMotionSig));
++  memcpy(r->ppu_rb.wsOamMotionSeen, o->ppu_rb.wsOamMotionSeen, sizeof(r->ppu_rb.wsOamMotionSeen));
++  memcpy(r->ppu_rb.wsOamMotionGrace, o->ppu_rb.wsOamMotionGrace, sizeof(r->ppu_rb.wsOamMotionGrace));
++  r->apu_frame_clock = o->apu_frame_clock;
++}
++
+ bool RtlGuestScopeRun(RtlGuestScopeCallback callback, void *context,
+                       uint32_t budget) {
+   /* Count/save core devices directly. Calling the public save/load API here
+@@ -1577,12 +1675,24 @@ bool RtlLoadExecutionState(SaveLoadInfo *sli) {
+   uint32 size = 0;
+   s_loaded_execution_valid = false;
+   sli->func(sli, &size, sizeof(size));
++  if (size == sizeof(RtlRollbackResidueV7) && size != sizeof(s_loaded_execution)) {
++    RtlRollbackResidueV7 old;
++    sli->func(sli, &old, sizeof(old));
++    cx4_saveload_clock(g_snes->cart->cx4, sli);
++    if (snes_saveload_get_version() >= 11)
++      dsp1_saveload_clock(g_snes->cart->dsp1, sli);
++    if (old.magic != RTL_RB_RESIDUE_MAGIC || old.version != 7u) return false;
++    rtl_residue_from_v7(&old, &s_loaded_execution);
++    s_loaded_execution_keeps_clock = false;
++    return s_loaded_execution_valid = true;
++  }
+   const uint32 v6_size = (uint32)offsetof(RtlRollbackResidue, apu_frame_clock);
+   if (size != sizeof(s_loaded_execution) && size != v6_size) return false;
+   memset(&s_loaded_execution, 0, sizeof(s_loaded_execution));
+   sli->func(sli, &s_loaded_execution, size);
+   cx4_saveload_clock(g_snes->cart->cx4, sli);
+-  dsp1_saveload_clock(g_snes->cart->dsp1, sli);
++  if (snes_saveload_get_version() >= 11)   /* v10 chunks end after Cx4's */
++    dsp1_saveload_clock(g_snes->cart->dsp1, sli);
+   s_loaded_execution_keeps_clock = size == v6_size;
+   return s_loaded_execution_valid =
+       s_loaded_execution.magic == RTL_RB_RESIDUE_MAGIC &&
+diff --git a/runner/src/snes/apu.c b/runner/src/snes/apu.c
+index a89363e2..b164e946 100644
+--- a/runner/src/snes/apu.c
++++ b/runner/src/snes/apu.c
+@@ -399,8 +399,13 @@ void apu_port_sched_restore(Apu *apu, const ApuPortSched *in) {
+ 
+ void apu_saveload(Apu *apu, SaveLoadInfo *sli) {
+   sli->func(sli, apu->ram, offsetof(Apu, pad) + 6 - offsetof(Apu, ram));
+-  sli->func(sli, apu->timerAhead, sizeof(apu->timerAhead));
+-  sli->func(sli, &apu->dspAhead, sizeof(apu->dspAhead));
++  /* v10 states predate the access-exact timing: no advance debt was carried
++   * (a v10 state always stands at an opcode boundary), see
++   * snes_upgrade_v10_state. */
++  if (snes_saveload_get_version() >= 11) {
++    sli->func(sli, apu->timerAhead, sizeof(apu->timerAhead));
++    sli->func(sli, &apu->dspAhead, sizeof(apu->dspAhead));
++  }
+   dsp_saveload(apu->dsp, sli);
+   spc_saveload(apu->spc, sli);
+ }
+diff --git a/runner/src/snes/dsp.c b/runner/src/snes/dsp.c
+index 1cff2c83..066b185f 100644
+--- a/runner/src/snes/dsp.c
++++ b/runner/src/snes/dsp.c
+@@ -327,6 +327,9 @@ uint32_t dsp_output_ring_write(const Dsp *dsp) {
+ 
+ void dsp_saveload(Dsp *dsp, SaveLoadInfo *sli) {
+   sli->func(sli, &dsp->ram, sizeof(Dsp) - offsetof(Dsp, ram));
++  /* A v10 state has only the region above; dsp_clockImportLegacy rebuilds
++   * the timing model from it once the load has succeeded. */
++  if (snes_saveload_get_version() < 11) return;
+   sli->func(sli, dsp->konDelay, sizeof(dsp->konDelay));
+   sli->func(sli, &dsp->rateCounter, sizeof(dsp->rateCounter));
+   sli->func(sli, dsp->endPending, sizeof(dsp->endPending));
+diff --git a/runner/src/snes/dsp.h b/runner/src/snes/dsp.h
+index 830889f8..a9f3f402 100644
+--- a/runner/src/snes/dsp.h
++++ b/runner/src/snes/dsp.h
+@@ -165,6 +165,10 @@ bool dsp_perClock(void);
+ void dsp_clock(Dsp* dsp);
+ void dsp_clockReset(Dsp* dsp);
+ void dsp_clockWrite(Dsp* dsp, uint8_t adr, uint8_t val);
++/* Rebuild the per-clock S-DSP (clk) and the canonical timing fields from the
++ * sample-step model's state, for a savestate older than v11 (which carried
++ * only that model). See dsp_clock.c. */
++void dsp_clockImportLegacy(Dsp* dsp);
+ /* Internal DAC-only mirror for the clocked mixer; never executes voices or
+  * writes canonical APU memory. NULL means ordinary unfiltered publication. */
+ Dsp *dsp_clock_output_filter(Dsp *dsp, uint8_t *voices);
+diff --git a/runner/src/snes/dsp_clock.c b/runner/src/snes/dsp_clock.c
+index f9d7e878..8cf5cd55 100644
+--- a/runner/src/snes/dsp_clock.c
++++ b/runner/src/snes/dsp_clock.c
+@@ -390,3 +390,102 @@ void dsp_clockWrite(Dsp *dsp, uint8_t adr, uint8_t val) {
+   else if (adr == R_KON) c->konNew = val;
+   else if (adr == R_ENDX) { c->endxBuf = 0; dsp_publish(dsp, R_ENDX, 0); }
+ }
++
++/* ── v10 savestates ───────────────────────────────────────────────────────
++ * A state written before the per-clock S-DSP carries only the sample-step
++ * model (Dsp.ram .. output, the `channel` voices). Everything the per-clock
++ * model needs is there or derivable, except the phases nothing recorded:
++ * the shared rate counter and the 32-clock step, which start at their reset
++ * values (an envelope step lands a few samples off; nothing is skipped).
++ *
++ * Voices. The old decoder keeps the current BRR block as 16 samples at
++ * decodeBuffer[3..18] (the previous block's last three at [0..2]) and has
++ * already moved decodeOffset to the next block, whose loop redirect it
++ * applies when it gets there (previousFlags). Its interpolation window at
++ * pitchCounter is decodeBuffer[s..s+3], s = pitchCounter >> 12, i.e. block
++ * samples s-3..s, with the same 8-bit Gaussian fraction. The per-clock
++ * model reads the window from the oldest of three 4-sample groups in its
++ * ring (bufPos) at pos >> 12 and decodes the next group when pos passes
++ * 0x4000. Samples are the same values, held one bit higher (x2). */
++static uint16_t legacy_loop_adr(const Dsp *dsp, int v) {
++  uint16_t p = (uint16_t)(dsp->dirPage + 4 * dsp->channel[v].srcn);
++  return (uint16_t)(ram8(dsp, (uint16_t)(p + 2)) | ram8(dsp, (uint16_t)(p + 3)) << 8);
++}
++
++/* Decode the voice's next 4 samples, then advance as step4 does. */
++static void legacy_decode_group(Dsp *dsp, int v) {
++  DspClock *c = &dsp->clk;
++  DspClockVoice *x = &c->v[v];
++  c->brrHeader = ram8(dsp, x->brrAdr);
++  c->brrData = ram8(dsp, (uint16_t)(x->brrAdr + x->brrOff));
++  brr_decode4(dsp, v);
++  if (x->brrOff >= 7) {
++    x->brrAdr = (c->brrHeader & 1) ? legacy_loop_adr(dsp, v) : (uint16_t)(x->brrAdr + 9);
++    x->brrOff = 1;
++  } else {
++    x->brrOff += 2;
++  }
++}
++
++void dsp_clockImportLegacy(Dsp *dsp) {
++  DspClock *c = &dsp->clk;
++  dsp_clockReset(dsp);
++  memcpy(c->regs, dsp->ram, sizeof(c->regs));
++  c->dir = c->regs[R_DIR];
++  c->non = c->regs[R_NON];
++  c->eon = c->regs[R_EON];
++  c->pmon = c->regs[R_PMON] & 0xfe;
++  c->kof = c->regs[R_KOF];
++  c->esa = c->regs[R_ESA];
++  c->everyOther = dsp->evenCycle ? 1 : 0;
++  c->counter = 0x77ff;
++  c->noise = (int32_t)((uint16_t)dsp->noiseSample & 0x7fff);
++  if (!c->noise) c->noise = 0x4000;
++  /* Echo: the old FIR ring holds the same half-scale samples; its index is
++   * the next slot to fill, the new one the last filled. */
++  for (int i = 0; i < 8; i++) {
++    c->echoHist[i][0] = dsp->firBufferL[i];
++    c->echoHist[i][1] = dsp->firBufferR[i];
++  }
++  c->echoHistPos = (uint8_t)((dsp->firBufferIndex + 7) & 7);
++  c->echoLen = (uint16_t)((c->regs[R_EDL] & 15) << 11);
++  c->echoOff = (uint16_t)(dsp->echoBufferIndex * 4);
++  if (c->echoLen && c->echoOff >= c->echoLen) c->echoOff = 0;
++  c->echoOn = dsp->echoWrites;
++  for (int v = 0; v < 8; v++) {
++    const DspChannel *ch = &dsp->channel[v];
++    DspClockVoice *x = &c->v[v];
++    static const uint8_t kMode[5] = { M_ATTACK, M_DECAY, M_SUSTAIN, M_SUSTAIN, M_RELEASE };
++    x->mode = kMode[ch->adsrState <= 4 ? ch->adsrState : 4];
++    x->env = ch->gain & 0x7ff;
++    x->envPrev = x->env;
++    x->envx = (uint8_t)(x->env >> 4);
++    if (ch->keyOn) c->konNew |= (uint8_t)(1 << v);   /* still to be polled */
++    int s = ch->pitchCounter >> 12, frac = ch->pitchCounter & 0xfff;
++    int w = s - 3;                         /* window start, in block samples */
++    int g0 = w >= 0 ? (w / 4) * 4 : -4;    /* its 4-sample group */
++    uint16_t cur = (uint16_t)(ch->decodeOffset - 9);
++    int first = g0 >= 4 ? 4 : g0;          /* the ring: samples first..first+11 */
++    for (int i = 0; i < 12; i++) {
++      int n = first + i;                   /* -4..15; -4 is never in a window */
++      int16_t smp = n >= -3 ? ch->decodeBuffer[n + 3] : ch->decodeBuffer[0];
++      x->buf[i] = (int16_t)(smp * 2);
++    }
++    x->bufPos = 0;
++    if (g0 >= 4) {
++      /* The ring ends at the block's last sample: the decoder continues with
++       * the next block, then catches up to the window's group. */
++      x->brrAdr = (ch->previousFlags & 1) ? legacy_loop_adr(dsp, v) : ch->decodeOffset;
++      x->brrOff = 1;
++      for (int k = 4; k < g0; k += 4) legacy_decode_group(dsp, v);
++    } else {
++      /* Still inside the current block: resume with its group after the ring. */
++      x->brrAdr = cur;
++      x->brrOff = (uint8_t)(1 + 2 * ((g0 + 12) / 4));
++    }
++    x->pos = ((w - g0) << 12) | frac;
++  }
++  memset(dsp->konDelay, 0, sizeof(dsp->konDelay));
++  memset(dsp->endPending, 0, sizeof(dsp->endPending));
++  dsp->rateCounter = 0x77ff;
++}
+diff --git a/runner/src/snes/spc.c b/runner/src/snes/spc.c
+index ba48adc4..efeda5a9 100644
+--- a/runner/src/snes/spc.c
++++ b/runner/src/snes/spc.c
+@@ -7,6 +7,7 @@
+ #include <stddef.h>
+ 
+ #include "spc.h"
++#include "snes.h"   /* snes_saveload_get_version */
+ #include "apu.h"
+ 
+ static const int cyclesPerOpcode[256] = {
+@@ -127,7 +128,8 @@ void spc_saveload(Spc *spc, SaveLoadInfo *sli) {
+   /* An opcode's bus effects can lead its remaining clocks. Retain its
+    * access cursor beside the APU's timer/DSP advance debt. Probe-only
+    * fields starting at dry are temporary and stay outside the snapshot. */
+-  sli->func(sli, &spc->cyclesUsed, offsetof(Spc, dry) - offsetof(Spc, cyclesUsed));
++  if (snes_saveload_get_version() >= 11)   /* v10: no access cursor */
++    sli->func(sli, &spc->cyclesUsed, offsetof(Spc, dry) - offsetof(Spc, cyclesUsed));
+ }
+ 
+ /* Opt-in SPC instruction trace (SNESRECOMP_SPC_TRACE=1): ring of the last

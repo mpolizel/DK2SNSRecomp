@@ -1,5 +1,5 @@
 diff --git a/runner/src/beam_frame_driver.c b/runner/src/beam_frame_driver.c
-index f667e798..7c7891d7 100644
+index 24746bb6..10778b20 100644
 --- a/runner/src/beam_frame_driver.c
 +++ b/runner/src/beam_frame_driver.c
 @@ -115,6 +115,15 @@ static void run_interrupt(uint32_t vector, uint64_t deadline) {
@@ -19,10 +19,10 @@ index f667e798..7c7891d7 100644
    int slices = 0;
    uint64_t frame_end;
 diff --git a/runner/src/desktop/host_main.c b/runner/src/desktop/host_main.c
-index 418294c0..f0cd5dee 100644
+index 670938aa..b84652fe 100644
 --- a/runner/src/desktop/host_main.c
 +++ b/runner/src/desktop/host_main.c
-@@ -52,6 +52,50 @@
+@@ -53,6 +53,50 @@
  #include "types.h"
  #include "common_rtl.h"
  #include "cpu_state.h"
@@ -73,7 +73,7 @@ index 418294c0..f0cd5dee 100644
  #include "cpu_trace.h"
  #include "common_cpu_infra.h"
  #include "snes/tier2_capture.h"
-@@ -3252,7 +3296,7 @@ static void RunInGameLauncher(bool *running, const char **exit_reason) {
+@@ -3340,7 +3384,7 @@ static void RunInGameLauncher(bool *running, const char **exit_reason) {
        if (same_rom &&
            snesrecomp_abspath("saves/resume.sav", g_relaunch.state,
                               sizeof(g_relaunch.state))) {
@@ -82,7 +82,7 @@ index 418294c0..f0cd5dee 100644
        }
        if (same_rom && !g_relaunch.with_state) {
          /* Restarting now would throw the player's progress away. The edit is
-@@ -3995,7 +4039,7 @@ error_reading:;
+@@ -4127,7 +4171,7 @@ error_reading:;
     * setting a live session cannot take, and saved the moment it left. The
     * file is one-shot -- a later plain launch must not resume it again. */
    if (args.resume_state) {

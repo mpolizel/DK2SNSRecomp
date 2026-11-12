@@ -1,8 +1,8 @@
 diff --git a/runner/src/snes/apu.c b/runner/src/snes/apu.c
-index 991758d9..bbd133e5 100644
+index b81177d4..a89363e2 100644
 --- a/runner/src/snes/apu.c
 +++ b/runner/src/snes/apu.c
-@@ -154,6 +154,21 @@ bool apu_runUntilPortQueueEmpty(Apu* apu, uint32_t max_cycles) {
+@@ -257,6 +257,21 @@ bool apu_runUntilPortQueueEmpty(Apu* apu, uint32_t max_cycles) {
  
  bool apu_runToGuestCycle(Apu* apu, uint64_t guest_cycle,
                           uint32_t max_cycles) {

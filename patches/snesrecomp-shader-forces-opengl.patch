@@ -1,11 +1,11 @@
 diff --git a/runner/src/desktop/host_main.c b/runner/src/desktop/host_main.c
-index 91ea98ea..58a598dd 100644
+index b84652fe..a3887428 100644
 --- a/runner/src/desktop/host_main.c
 +++ b/runner/src/desktop/host_main.c
-@@ -657,6 +657,14 @@ static int RendererChoice(void) {
-   if (!want[0])
-     want = g_config.output_method == kOutputMethod_OpenGL ? "opengl" :
+@@ -725,6 +725,14 @@ static int RendererChoice(void) {
             g_config.output_method == kOutputMethod_SDLSoftware ? "software" : "auto";
+ #endif
+   }
 +  /* GLSL presets render only on the OpenGL presenter, so a chosen shader
 +   * wins over the renderer choice instead of being silently ignored. */
 +  if (g_game && g_game->shader_supported && g_config.shader && g_config.shader[0] &&

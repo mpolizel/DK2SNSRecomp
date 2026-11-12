@@ -1,8 +1,8 @@
 diff --git a/runner/src/snes/interp_bridge.c b/runner/src/snes/interp_bridge.c
-index 27dd0ea3..06d8b573 100644
+index 67b4c139..57626f06 100644
 --- a/runner/src/snes/interp_bridge.c
 +++ b/runner/src/snes/interp_bridge.c
-@@ -2824,10 +2824,16 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -2908,10 +2908,16 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
           * Exception: a handler that discarded its own interrupt frame
           * (handler_frame_discarded) has become the main loop -- Rare's DKC
           * engine resets S and jumps to its `WAI / BRA` idle loop from NMI.

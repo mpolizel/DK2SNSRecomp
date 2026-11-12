@@ -1,8 +1,8 @@
 diff --git a/runner/src/snes/ppu.c b/runner/src/snes/ppu.c
-index 6f7fbd85..54db0bfb 100644
+index 38793f07..61c575f1 100644
 --- a/runner/src/snes/ppu.c
 +++ b/runner/src/snes/ppu.c
-@@ -912,6 +912,13 @@ static void PpuRunLineJob(Ppu* ppu, int line, bool pixels, bool live) {
+@@ -1030,6 +1030,13 @@ static void PpuRunLineJob(Ppu* ppu, int line, bool pixels, bool live) {
      ppu->timeOver = false;
      ppu->evenFrame = !ppu->evenFrame;
    } else {

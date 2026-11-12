@@ -1,0 +1,474 @@
+diff --git a/host/snesrecomp_codegen_host.c b/host/snesrecomp_codegen_host.c
+index 13040e47..135b43ee 100644
+--- a/host/snesrecomp_codegen_host.c
++++ b/host/snesrecomp_codegen_host.c
+@@ -10,6 +10,7 @@
+ #include "snesrecomp_codegen_host.h"
+ 
+ #include "host_paths.h"   /* snesrecomp_exe_basename, snesrecomp_exe_dir_path */
++#include "launcher_cache.h" /* snesrecomp_rom_cache_read */
+ 
+ #include <ctype.h>
+ #include <stdio.h>
+@@ -60,6 +61,26 @@ static char g_toolchain_root[1100];   /* pack root with bin/cmake, or "" */
+ static char g_exe_dir[1100];
+ static int g_ready;
+ static int g_relaunch_is_helper;
++/* --prepare: children run without a console window. */
++static int g_headless;
++/* The ROM the last Generate & rebuild used (for the deferred helper). */
++static char g_rebuild_rom[1100];
++
++/* Started by RecompLauncher (RECOMPLAUNCHER=1), which has already checked the
++ * player's ROM: the playable build is started on that ROM, straight into the
++ * game, instead of opening its own launcher window. Fills the ROM path and
++ * returns 1, or returns 0 to keep the usual --launcher start. */
++static int recomplauncher_rom(char* out, size_t cap, const char* rom_hint) {
++    const char* e = getenv("RECOMPLAUNCHER");
++    if (!e || strcmp(e, "1") != 0 || cap == 0)
++        return 0;
++    out[0] = '\0';
++    if (rom_hint && rom_hint[0])
++        snprintf(out, cap, "%s", rom_hint);
++    else if (!snesrecomp_rom_cache_read(out, cap))
++        out[0] = '\0';
++    return out[0] != '\0';
++}
+ static int g_cfg_roots;
+ static int g_has_funcs_h;
+ 
+@@ -1024,7 +1045,8 @@ static int run_generate_win(const char* rom,
+ 
+     char mutable_cmd[4096];
+     snprintf(mutable_cmd, sizeof(mutable_cmd), "%s", cmdline);
+-    if (!CreateProcessA(NULL, mutable_cmd, NULL, NULL, TRUE, 0, NULL,
++    if (!CreateProcessA(NULL, mutable_cmd, NULL, NULL, TRUE,
++                        g_headless ? CREATE_NO_WINDOW : 0, NULL,
+                         g_project_root, &si, &pi)) {
+         CloseHandle(rd);
+         CloseHandle(wr);
+@@ -1241,6 +1263,9 @@ static int write_windows_deferred_rebuild_helper(char* err_msg, size_t err_cap)
+     bat_write_set(f, "TARGET", g_cmake_target);
+     bat_write_set(f, "DISPLAY", g_display);
+     bat_write_set(f, "PACK", g_toolchain_root);
++    char rl_rom[1100];
++    const int rl = recomplauncher_rom(rl_rom, sizeof(rl_rom), g_rebuild_rom);
++    if (rl) bat_write_set(f, "ROM", rl_rom);
+     fprintf(f,
+             "echo Waiting for %%DISPLAY%% to exit...\r\n"
+             ":waitloop\r\n"
+@@ -1284,9 +1309,12 @@ static int write_windows_deferred_rebuild_helper(char* err_msg, size_t err_cap)
+             "  pause\r\n"
+             "  exit /b 1\r\n"
+             ")\r\n"
+-            "echo Starting %%DISPLAY%%...\r\n"
+-            "start \"\" /D \"%%ROOT%%\" \"%%EXE%%\" --launcher\r\n"
+-            "endlocal\r\n");
++            "echo Starting %%DISPLAY%%...\r\n");
++    if (rl)
++        fprintf(f, "start \"\" /D \"%%ROOT%%\" \"%%EXE%%\" --rom \"%%ROM%%\"\r\n");
++    else
++        fprintf(f, "start \"\" /D \"%%ROOT%%\" \"%%EXE%%\" --launcher\r\n");
++    fprintf(f, "endlocal\r\n");
+     fclose(f);
+     return 1;
+ }
+@@ -1443,7 +1471,7 @@ static int host_rebuild_game(const char* rom_path, char* out_exe_path,
+                              size_t out_cap, char* err_msg, size_t err_cap,
+                              RecompLauncherCPrepareProgressFn on_progress,
+                              void* progress_ctx) {
+-    (void)rom_path;
++    snprintf(g_rebuild_rom, sizeof(g_rebuild_rom), "%s", rom_path ? rom_path : "");
+     g_relaunch_is_helper = 0;
+     if (!g_ready || !g_build_dir[0]) {
+         snprintf(err_msg, err_cap, "Project tree is not available.");
+@@ -1622,7 +1650,11 @@ static void handoff_to_rebuilt_or_return(void) {
+         memset(&pi, 0, sizeof(pi));
+         si.cb = sizeof(si);
+         SetEnvironmentVariableA("SNESRECOMP_SETUP_HANDOFF", "1");
+-        snprintf(cmd, sizeof(cmd), "\"%s\" --launcher", g_exe_path);
++        char rl_rom[1024];
++        if (recomplauncher_rom(rl_rom, sizeof(rl_rom), NULL))
++            snprintf(cmd, sizeof(cmd), "\"%s\" --rom \"%s\"", g_exe_path, rl_rom);
++        else
++            snprintf(cmd, sizeof(cmd), "\"%s\" --launcher", g_exe_path);
+         if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL,
+                             g_project_root[0] ? g_project_root : NULL, &si,
+                             &pi)) {
+@@ -1638,14 +1670,21 @@ static void handoff_to_rebuilt_or_return(void) {
+     }
+ #else
+     {
+-        char* args[3];
++        char* args[4];
++        static char rl_rom[1024];
+         setenv("SNESRECOMP_SETUP_HANDOFF", "1", 1);
+         if (g_project_root[0] && chdir(g_project_root) != 0) {
+             /* Nothing here needs the cwd badly enough to abort over it. */
+         }
+         args[0] = g_exe_path;
+-        args[1] = (char*)"--launcher";
+-        args[2] = NULL;
++        if (recomplauncher_rom(rl_rom, sizeof(rl_rom), NULL)) {
++            args[1] = (char*)"--rom";
++            args[2] = rl_rom;
++            args[3] = NULL;
++        } else {
++            args[1] = (char*)"--launcher";
++            args[2] = NULL;
++        }
+         execv(g_exe_path, args);
+         perror("snesrecomp-codegen: could not start the rebuilt game");
+         /* execv only returns on failure; carry on as the setup host. */
+@@ -1684,7 +1723,11 @@ void snesrecomp_codegen_host_relaunch_or_exit(const char* rom_path) {
+             flags = CREATE_NEW_CONSOLE;
+         } else {
+             fprintf(stderr, "snesrecomp-codegen: relaunching %s\n", exe);
+-            snprintf(cmd, sizeof(cmd), "\"%s\" --launcher", exe);
++            char rl_rom[1024];
++            if (recomplauncher_rom(rl_rom, sizeof(rl_rom), rom_path))
++                snprintf(cmd, sizeof(cmd), "\"%s\" --rom \"%s\"", exe, rl_rom);
++            else
++                snprintf(cmd, sizeof(cmd), "\"%s\" --launcher", exe);
+         }
+         if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE, flags, NULL,
+                             g_project_root, &si, &pi)) {
+@@ -1698,7 +1741,12 @@ void snesrecomp_codegen_host_relaunch_or_exit(const char* rom_path) {
+ #else
+     {
+         fprintf(stderr, "snesrecomp-codegen: relaunching %s\n", exe);
+-        char* args[] = { exe, "--launcher", NULL };
++        static char rl_rom[1024];
++        char* args[] = { exe, "--launcher", NULL, NULL };
++        if (recomplauncher_rom(rl_rom, sizeof(rl_rom), rom_path)) {
++            args[1] = "--rom";
++            args[2] = rl_rom;
++        }
+         execv(exe, args);
+         perror("snesrecomp-codegen: execv failed");
+         exit(1);
+@@ -1870,3 +1918,181 @@ void snesrecomp_codegen_host_apply(RecompLauncherCGameInfo* gi,
+     gi->prepare_required_before_continue = 1;
+ #endif
+ }
++
++/* -- Headless setup (--prepare) --------------------------------------------
++ * The same steps as the launcher's Generate & rebuild, for a caller that
++ * shows its own progress (RecompLauncher's setup screen): no window, one
++ * "progress <0..1> <text>" line per step on stdout, an exit code per outcome.
++ * Windows builds in place here (the launcher defers its build to a console
++ * helper because it relaunches itself; this process just waits). */
++typedef struct { float lo, hi; } PrepareSpan;
++
++static void prepare_print(float pct, const char* text) {
++    if (pct < 0.0f) pct = 0.0f;
++    if (pct > 1.0f) pct = 1.0f;
++    printf("progress %.2f %s\n", pct, text && text[0] ? text : "");
++    fflush(stdout);
++}
++
++static void prepare_progress(void* ctx, float pct, const char* message) {
++    const PrepareSpan* s = (const PrepareSpan*)ctx;
++    if (pct < 0.0f) return;   /* log lines: the step's own log keeps them */
++    prepare_print(s->lo + (s->hi - s->lo) * pct, message);
++}
++
++#if defined(_WIN32)
++static int prepare_build_win(char* err, size_t cap) {
++    char script[1100];
++    if (!join_path(script, sizeof(script), g_build_dir, "recomp_prepare_build.cmd")) {
++        snprintf(err, cap, "Failed to form the build script path.");
++        return 0;
++    }
++    mkdir_p(g_build_dir);
++    FILE* f = fopen(script, "wb");
++    if (!f) { snprintf(err, cap, "Failed to write %s", script); return 0; }
++    fprintf(f, "@echo off\r\nsetlocal EnableExtensions\r\n");
++    bat_write_set(f, "CMAKE", g_cmake);
++    bat_write_set(f, "BUILD_DIR", g_build_dir);
++    bat_write_set(f, "ROOT", g_project_root);
++    bat_write_set(f, "TARGET", g_cmake_target);
++    bat_write_set(f, "PACK", g_toolchain_root);
++    fprintf(f,
++            "if exist \"%%PACK%%\\env.bat\" call \"%%PACK%%\\env.bat\" >nul\r\n"
++            "cd /d \"%%ROOT%%\"\r\n"
++            "if not exist \"%%BUILD_DIR%%\\CMakeCache.txt\" (\r\n"
++            "  powershell -NoProfile -Command \"Get-ChildItem -Recurse -File "
++            "-Exclude build | Where-Object { $_.LastWriteTime -gt (Get-Date) } | "
++            "ForEach-Object { $_.LastWriteTime = Get-Date }\"\r\n"
++            "  \"%%CMAKE%%\" -S \"%%ROOT%%\" -B \"%%BUILD_DIR%%\" -G Ninja "
++            "-DCMAKE_BUILD_TYPE=Release || exit /b 1\r\n"
++            ")\r\n"
++            "\"%%CMAKE%%\" --build \"%%BUILD_DIR%%\" --parallel --target \"%%TARGET%%\"\r\n"
++            "exit /b %%errorlevel%%\r\n");
++    fclose(f);
++
++    char cmd[1400];
++    snprintf(cmd, sizeof(cmd), "cmd.exe /C \"\"%s\"\"", script);
++    SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
++    HANDLE rd = NULL, wr = NULL;
++    if (!CreatePipe(&rd, &wr, &sa, 0)) { snprintf(err, cap, "CreatePipe failed"); return 0; }
++    SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
++    STARTUPINFOA si;
++    PROCESS_INFORMATION pi;
++    memset(&si, 0, sizeof(si));
++    memset(&pi, 0, sizeof(pi));
++    si.cb = sizeof(si);
++    si.dwFlags = STARTF_USESTDHANDLES;
++    si.hStdOutput = wr;
++    si.hStdError = wr;
++    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
++    if (!CreateProcessA(NULL, cmd, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL,
++                        g_project_root, &si, &pi)) {
++        CloseHandle(rd);
++        CloseHandle(wr);
++        snprintf(err, cap, "Failed to start the build (%lu)", (unsigned long)GetLastError());
++        return 0;
++    }
++    CloseHandle(wr);
++    char log_path[1100];
++    FILE* log = join_path(log_path, sizeof(log_path), g_build_dir, "snesrecomp_rebuild.log")
++                    ? fopen(log_path, "ab") : NULL;
++    char line[2048];
++    size_t len = 0;
++    char buf[4096];
++    DWORD n = 0;
++    while (ReadFile(rd, buf, sizeof(buf), &n, NULL) && n > 0) {
++        if (log) fwrite(buf, 1, n, log);
++        for (DWORD i = 0; i < n; ++i) {
++            char c = buf[i];
++            if (c == '\r') continue;
++            if (c != '\n' && len + 1 < sizeof(line)) { line[len++] = c; continue; }
++            line[len] = '\0';
++            unsigned done = 0, total = 0;
++            if (sscanf(line, "[%u/%u]", &done, &total) == 2 && total)
++                prepare_print(0.60f + 0.38f * (float)done / (float)total, "Compiling the game");
++            len = 0;
++        }
++    }
++    if (log) fclose(log);
++    CloseHandle(rd);
++    WaitForSingleObject(pi.hProcess, INFINITE);
++    DWORD code = 1;
++    GetExitCodeProcess(pi.hProcess, &code);
++    CloseHandle(pi.hThread);
++    CloseHandle(pi.hProcess);
++    if (code != 0) {
++        snprintf(err, cap, "The build failed (exit %lu); see build\\snesrecomp_rebuild.log",
++                 (unsigned long)code);
++        return 0;
++    }
++    return 1;
++}
++#endif
++
++int snesrecomp_codegen_host_prepare_headless(const char* display_name,
++                                             const char* rom) {
++    static RecompLauncherCGameInfo gi;
++    char err[1024] = "";
++    g_headless = 1;
++    if (!rom || !rom[0]) {
++        fprintf(stderr, "prepare: no ROM (pass --rom <path>)\n");
++        return 2;
++    }
++    /* Prepare builds; it never starts the game. */
++#if defined(_WIN32)
++    _putenv_s("SNESRECOMP_NO_HANDOFF", "1");
++#else
++    setenv("SNESRECOMP_NO_HANDOFF", "1", 1);
++#endif
++    memset(&gi, 0, sizeof(gi));
++    prepare_print(0.0f, "Checking the setup pack");
++    snesrecomp_codegen_host_autowire(&gi, display_name);
++    if (!g_ready || !g_build_dir[0]) {
++        fprintf(stderr, "prepare: this folder is not a setup pack\n");
++        return 4;
++    }
++    char why[256];
++    if (!resolve_tools(why, sizeof(why))) {
++        PrepareSpan s = { 0.02f, 0.30f };
++        prepare_print(0.02f, "Getting the build tools (one time per PC)");
++        if (!host_ensure_toolchain_with_progress(1, NULL, err, sizeof(err),
++                                                 prepare_progress, &s)) {
++            fprintf(stderr, "prepare: %s\n", err);
++            return 4;
++        }
++    }
++    {
++        PrepareSpan s = { 0.30f, 0.58f };
++        char out[1100] = "";
++        prepare_print(0.30f, "Recompiling the game from your ROM");
++        if (!host_prepare_generate(rom, out, sizeof(out), err, sizeof(err),
++                                   prepare_progress, &s)) {
++            fprintf(stderr, "prepare: %s\n", err);
++            return strstr(err, "ROM verification failed") ? 3 : 5;
++        }
++    }
++    prepare_print(0.60f, "Compiling the game");
++#if defined(_WIN32)
++    if (!prepare_build_win(err, sizeof(err))) {
++        fprintf(stderr, "prepare: %s\n", err);
++        return 5;
++    }
++#else
++    {
++        PrepareSpan s = { 0.60f, 0.98f };
++        char exe[1100];
++        if (!host_rebuild_game(rom, exe, sizeof(exe), err, sizeof(err),
++                               prepare_progress, &s)) {
++            fprintf(stderr, "prepare: %s\n", err);
++            return 5;
++        }
++    }
++#endif
++    if (!path_is_file(g_exe_path)) {
++        fprintf(stderr, "prepare: the build did not produce %s\n", g_exe_path);
++        return 5;
++    }
++    snesrecomp_rom_cache_write(rom);
++    prepare_print(1.0f, "Ready to play");
++    return 0;
++}
+diff --git a/host/snesrecomp_codegen_host.h b/host/snesrecomp_codegen_host.h
+index f01d49ff..0d1838b4 100644
+--- a/host/snesrecomp_codegen_host.h
++++ b/host/snesrecomp_codegen_host.h
+@@ -61,6 +61,13 @@ int snesrecomp_codegen_host_sources_missing(
+ /* After run_window returns RECOMP_LAUNCHER_RESULT_RELAUNCH. Does not return
+  * on success (exec / spawn helper + exit). */
+ void snesrecomp_codegen_host_relaunch_or_exit(const char* rom_path);
++/* Headless setup (RecompLauncher's "prepare" step): make the build tools
++ * ready, generate the C from `rom` and build the playable game, with no
++ * window, printing "progress <0..1> <text>" lines on stdout. Returns the
++ * process exit code: 0 ready, 2 no ROM, 3 wrong ROM, 4 setup tools
++ * unavailable, 5 build failed. */
++int snesrecomp_codegen_host_prepare_headless(const char* display_name,
++                                             const char* rom);
+ 
+ /* Zero-configuration wiring — the form every port should use.
+  *
+diff --git a/runner/src/desktop/config.h b/runner/src/desktop/config.h
+index a8d8b291..c9bec4a6 100644
+--- a/runner/src/desktop/config.h
++++ b/runner/src/desktop/config.h
+@@ -117,6 +117,10 @@ typedef struct Config {
+   // Set from the launcher's dashboard checkbox. Force the launcher back with the
+   // --launcher argument or by setting SkipLauncher = 0 in config.ini.
+   bool skip_launcher;
++  // Read controllers while the window is not in front ([General]
++  // BackgroundInput). Off by default: a launcher overlay (RecompLauncher's,
++  // Steam's) uses the controller too.
++  bool background_input;
+   bool expose_coverage_mod;
+   int coverage_capture; /* -1 absent: use Mods selection */
+ 
+diff --git a/runner/src/desktop/host_main.c b/runner/src/desktop/host_main.c
+index 3f14db60..670938aa 100644
+--- a/runner/src/desktop/host_main.c
++++ b/runner/src/desktop/host_main.c
+@@ -3483,6 +3483,12 @@ int snesrecomp_desktop_main(const SnesDesktopHostGame *game, int argc, char **ar
+                              anchored ? "ok" : "declined");
+     }
+   }
++#if defined(SNESRECOMP_HOST_HAS_CODEGEN)
++  /* --prepare: a setup pack builds itself for a caller showing its own
++   * progress (RecompLauncher), before any window, config or update check. */
++  if (args.prepare)
++    return snesrecomp_codegen_host_prepare_headless(game->display_name, args.rom);
++#endif
+   if (game->state_menu_hotkeys) ConfigUseStateMenuDefaults();
+   if (game->in_game_launcher) ConfigUseInGameLauncherDefaults();
+   /* Before parsing: default [GamepadMap] rows exist for each routed seat. */
+@@ -3547,6 +3553,15 @@ int snesrecomp_desktop_main(const SnesDesktopHostGame *game, int argc, char **ar
+                            SNES_CONFIG_DEFAULT_DEADZONE);
+     WriteConfigFile(config_file);
+   }
++  /* Started from RecompLauncher's Big Picture mode (a controller, a TV):
++   * open full screen for this run, without writing it to config.ini. */
++  {
++    const char *mode = getenv("RECOMPLAUNCHER_MODE");
++    if (mode && !strcmp(mode, "bigpicture") && !g_config.fullscreen) {
++      g_config.fullscreen = 1;
++      host_report_breadcrumb("RecompLauncher Big Picture: full screen for this run");
++    }
++  }
+   host_report_breadcrumb(
+       "config parsed: output=%d new_renderer=%d scale=%d fullscreen=%d "
+       "audio=%d freq=%d samples=%d",
+@@ -3833,7 +3848,10 @@ int snesrecomp_desktop_main(const SnesDesktopHostGame *game, int argc, char **ar
+   if (g_config.audio_samples <= 0 || ((g_config.audio_samples & (g_config.audio_samples - 1)) != 0))
+     g_config.audio_samples = kDefaultSamples;
+ 
+-  SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
++  /* Off unless [General] BackgroundInput asks: a launcher's overlay (Steam,
++   * RecompLauncher) reads the same controller while the game is behind it. */
++  SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,
++              g_config.background_input ? "1" : "0");
+ 
+   // set up SDL
+   SDL_SetMainReady();
+diff --git a/runner/src/desktop/mmx_config.c b/runner/src/desktop/mmx_config.c
+index d7ca56b6..3ae11206 100644
+--- a/runner/src/desktop/mmx_config.c
++++ b/runner/src/desktop/mmx_config.c
+@@ -611,6 +611,8 @@ static bool HandleIniConfig(int section, const char *key, char *value) {
+       return ParseBool(value, &g_config.enable_snes9x_oracle);
+     } else if (StringEqualsNoCase(key, "SkipLauncher")) {
+       return ParseBool(value, &g_config.skip_launcher);
++    } else if (StringEqualsNoCase(key, "BackgroundInput")) {
++      return ParseBool(value, &g_config.background_input);
+     }
+   } else if (section == 6) {
+     if (StringEqualsNoCase(key, "PlayerName")) {
+@@ -904,6 +906,7 @@ void WriteConfigFile(const char *filename) {
+     { "GamepadMap", "EnableGamepad1" },
+     { "GamepadMap", "EnableGamepad2" },
+     { "General",    "SkipLauncher" },
++    { "General",    "BackgroundInput" },
+     { "GamepadMap", "GamepadDeadzone" },
+     { "Netplay",    "PlayerName" },
+     { "Graphics",   "FrameBlend" },
+@@ -949,6 +952,7 @@ void WriteConfigFile(const char *filename) {
+   CfgSet(kvs, N, "GamepadMap", "EnableGamepad2", "%s",
+          g_config.enable_gamepad[1] ? "true" : "false");
+   CfgSet(kvs, N, "General", "SkipLauncher", "%d", g_config.skip_launcher ? 1 : 0);
++  CfgSet(kvs, N, "General", "BackgroundInput", "%d", g_config.background_input ? 1 : 0);
+   CfgSet(kvs, N, "GamepadMap", "GamepadDeadzone", "%d", g_config.gamepad_deadzone);
+   CfgSet(kvs, N, "Netplay", "PlayerName", "%s", g_config.netplay_player_name);
+   CfgSet(kvs, N, "Graphics", "FrameBlend", "%d", g_config.frame_blend ? 1 : 0);
+diff --git a/runner/src/host_args.c b/runner/src/host_args.c
+index b1c580a6..cb9260e7 100644
+--- a/runner/src/host_args.c
++++ b/runner/src/host_args.c
+@@ -35,6 +35,8 @@ void snesrecomp_host_args_usage(const char *program, const char *extra) {
+           "  --framedump <dir>     write frames to this directory.\n"
+           "  --resume-state <path> load this save state before the first frame,\n"
+           "                        then delete it (the in-game launcher's restart).\n"
++          "  --prepare             setup pack: generate and build the game from\n"
++          "                        --rom without a window, printing progress lines.\n"
+           "  --help, -h            this message.\n");
+   if (extra && extra[0]) fprintf(stderr, "%s", extra);
+ }
+@@ -82,6 +84,7 @@ int snesrecomp_host_args_parse(int *argc_io, char ***argv_io,
+     if (strcmp(a, "--no-launcher") == 0) { out->no_launcher = 1; continue; }
+     if (strcmp(a, "--launcher") == 0) { out->force_launcher = 1; continue; }
+     if (strcmp(a, "--paused") == 0) { out->start_paused = 1; continue; }
++    if (strcmp(a, "--prepare") == 0) { out->prepare = 1; continue; }
+ 
+     if (!strcmp(a, "--expose-coverage-mod")) {
+       out->expose_coverage_mod = 1; continue;
+diff --git a/runner/src/host_args.h b/runner/src/host_args.h
+index 01dbd36e..a12ffa32 100644
+--- a/runner/src/host_args.h
++++ b/runner/src/host_args.h
+@@ -67,6 +67,10 @@ typedef struct SnesrecompHostArgs {
+   int expose_coverage_mod;
+   int coverage_capture; /* -1 absent, 0 off, 1 on */
+   int help;                   /* --help / -h: the port should print and exit 0 */
++  /* --prepare: a setup pack generates and builds the game from the ROM
++   * (--rom) without a window, printing "progress <0..1> <text>" lines, and
++   * exits (RecompLauncher's setup step). */
++  int prepare;
+ 
+   /* Storage for the absolutized forms above. Not read directly. */
+   char rom_buf[SNESRECOMP_HOST_ARGS_PATH_MAX];

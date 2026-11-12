@@ -1,16 +1,16 @@
 diff --git a/runner/src/desktop/host_main.c b/runner/src/desktop/host_main.c
-index 58a598dd..418294c0 100644
+index 97a2a7c0..3f14db60 100644
 --- a/runner/src/desktop/host_main.c
 +++ b/runner/src/desktop/host_main.c
-@@ -165,6 +165,7 @@ static int RemapSdlButton(int button);
+@@ -175,6 +175,7 @@ static int RemapSdlButton(int button);
  static void HandleGamepadInput(GamepadInfo *gi, int button, bool pressed);
  static void HandleInput(int keyCode, int keyMod, bool pressed);
  static void HandleCommand(uint32 j, bool pressed);
 +static void LoadAudioInterpolation(void);
  static void PollKeyboardControls(const uint8_t *keys);
  static void RequestScreenshot(void);
- #ifndef __ANDROID__
-@@ -4056,6 +4057,7 @@ error_reading:;
+ #if !defined(__ANDROID__) && !SNESRECOMP_SDL_GLES2_ONLY
+@@ -4170,6 +4171,7 @@ error_reading:;
      const char *v = HostGetenv("OSD_FPS");
      if ((v && atoi(v)) || g_config.display_perf_title) snes_osd_set_fps_visible(1);
    }
@@ -18,7 +18,7 @@ index 58a598dd..418294c0 100644
    g_state_generation = RtlStateGeneration();
  
    snes_savestate_menu_set_compose(ComposeStateThumbnail);
-@@ -4805,10 +4807,45 @@ static void HandleCommand(uint32 j, bool pressed) {
+@@ -4922,10 +4924,45 @@ static void HandleCommand(uint32 j, bool pressed) {
    }
  }
  
@@ -65,7 +65,7 @@ index 58a598dd..418294c0 100644
  
  static void RequestScreenshot(void) {
 diff --git a/runner/src/snes/dsp.c b/runner/src/snes/dsp.c
-index f479165b..c730389b 100644
+index 129ee0aa..1cff2c83 100644
 --- a/runner/src/snes/dsp.c
 +++ b/runner/src/snes/dsp.c
 @@ -1,4 +1,5 @@
@@ -147,7 +147,7 @@ index f479165b..c730389b 100644
  static void dsp_cycleChannel(Dsp* dsp, int ch);
  static void dsp_handleEcho(Dsp* dsp, int* outputL, int* outputR, bool audit,
                             int inL, int inR);
-@@ -258,13 +325,15 @@ void dsp_cycle(Dsp* dsp) {
+@@ -277,13 +344,15 @@ void dsp_cycle(Dsp* dsp) {
    int echoL = 0, echoR = 0;
    for(int i = 0; i < 8; i++) {
      dsp_cycleChannel(dsp, i);
@@ -165,7 +165,7 @@ index f479165b..c730389b 100644
      if (dsp->channel[i].echoEnable) {
        echoL += left;
        echoR += right;
-@@ -272,8 +341,8 @@ void dsp_cycle(Dsp* dsp) {
+@@ -291,8 +360,8 @@ void dsp_cycle(Dsp* dsp) {
        echoR = echoR < -0x8000 ? -0x8000 : (echoR > 0x7fff ? 0x7fff : echoR);
      }
  #else
@@ -176,7 +176,15 @@ index f479165b..c730389b 100644
  #endif
      totalL = totalL < -0x8000 ? -0x8000 : (totalL > 0x7fff ? 0x7fff : totalL); // clamp 16-bit
      totalR = totalR < -0x8000 ? -0x8000 : (totalR > 0x7fff ? 0x7fff : totalR); // clamp 16-bit
-@@ -408,14 +477,18 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
+@@ -456,6 +525,7 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
+   // from the first block (decoded as the delay ends, position 0).
+   if (dsp->konDelay[ch]) {
+     dsp->channel[ch].sampleOut = 0;
++    s_interpOut[ch] = 0;
+     dsp->channel[ch].gain = 0;
+     if (--dsp->konDelay[ch] == 0) {
+       dsp->channel[ch].pitchCounter = 0;
+@@ -473,6 +543,8 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
    int newCounter = dsp->channel[ch].pitchCounter + pitch;
    if(newCounter > 0xffff) {
      // next sample
@@ -185,6 +193,10 @@ index f479165b..c730389b 100644
      dsp_decodeBrr(dsp, ch);
    }
    dsp->channel[ch].pitchCounter = newCounter;
+@@ -480,11 +552,13 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
+     dsp->endPending[ch] = false;
+     dsp->ram[0x7c] |= 1 << ch; // set ENDx
+   }
 -  int16_t sample = 0;
 +  int16_t sample = 0, heard = 0;
    if(dsp->channel[ch].useNoise) {
@@ -197,7 +209,7 @@ index f479165b..c730389b 100644
    }
    // Key-on/off is LATCHED and polled every other sample, KOF taking
    // priority — hardware behavior (and what the snes9x oracle does).
-@@ -439,6 +512,7 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
+@@ -508,6 +582,7 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
        dsp->channel[ch].decodeOffset = dsp->apu_ram[samplePointer];
        dsp->channel[ch].decodeOffset |= dsp->apu_ram[(samplePointer + 1) & 0xffff] << 8;
        memset(dsp->channel[ch].decodeBuffer, 0, sizeof(dsp->channel[ch].decodeBuffer));
@@ -205,7 +217,15 @@ index f479165b..c730389b 100644
        dsp->channel[ch].gain = 0;
        // Key-on always enters the ATTACK stage; whether the envelope VALUE
        // follows ADSR or the GAIN program is decided live per tick (the
-@@ -489,6 +563,7 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
+@@ -518,6 +593,7 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
+         dsp->ram[0x7c] &= ~(1 << ch); // key-on clears the voice's ENDx bit
+         dsp->endPending[ch] = false;
+         dsp->channel[ch].sampleOut = 0;
++        s_interpOut[ch] = 0;
+         return;
+       }
+     }
+@@ -570,6 +646,7 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
    sample = (sample * dsp->channel[ch].gain) >> 11;
    dsp->ram[(ch << 4) | 9] = sample >> 7;
    dsp->channel[ch].sampleOut = sample;
@@ -214,10 +234,10 @@ index f479165b..c730389b 100644
  
  static void dsp_handleGain(Dsp* dsp, int ch, bool liveGain) {
 diff --git a/runner/src/snes/dsp.h b/runner/src/snes/dsp.h
-index c93840e3..7d6c516c 100644
+index 1e73a12e..830889f8 100644
 --- a/runner/src/snes/dsp.h
 +++ b/runner/src/snes/dsp.h
-@@ -120,6 +120,18 @@ bool dsp_set_output_voices(Dsp *dsp, uint8_t voices);
+@@ -176,6 +176,18 @@ bool dsp_set_output_voices(Dsp *dsp, uint8_t voices);
  /* Preserve the presentation echo during a discarded rollback replay. The
   * canonical mixer still runs; its temporary output will be discarded. */
  void dsp_suspend_output_filter(Dsp *dsp, bool suspended);
