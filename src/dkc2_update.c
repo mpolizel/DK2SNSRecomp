@@ -247,6 +247,17 @@ void Dkc2UpdateCheckOnStart(const char *current_version) {
   char tag[64], url[1024];
   if (!current_version || !VersionValue(current_version)) return;  /* "dev" */
   if (!Dkc2UpdateGetEnabled()) return;
+  /* Started by RecompLauncher: it installs and updates this game itself, from
+   * the same GitHub releases, checking each download and backing the saves up
+   * first. A prompt of ours on top would replace the folder behind its back,
+   * so the check steps aside there and stays for every other start. */
+  {
+    const char *rl = getenv("RECOMPLAUNCHER");
+    if (rl && strcmp(rl, "1") == 0) {
+      fprintf(stderr, "[update] started by RecompLauncher, which keeps the game up to date\n");
+      return;
+    }
+  }
   if (!FindInstallRoot(root, MAX_PATH)) return;
   if (PathExists(root, L".git")) return;  /* a checkout updates through git */
   if (!FetchLatest(tag, sizeof tag, url, sizeof url)) {

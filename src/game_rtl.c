@@ -35,6 +35,37 @@
 #include "game_rtl.h"
 
 #include "beam_frame_driver.h"
+#include "common_rtl.h"
+
+/* Save states carry the CPU's place too, not only memory.
+ *
+ * The guest blob alone says nothing about where the CPU was: a state loaded
+ * in a running session resumed at that session's place, so one saved in a
+ * level and loaded during a cutscene ran the cutscene's code over the
+ * level's memory and went off the rails. The framework's execution chunk
+ * (CPU registers, the interpreter's resume point, beam and APU pacing, the
+ * same residue rewind uses) is appended after the guest blob; a state
+ * without it, from an earlier release, still loads as before. */
+static void GameStateSaveExtra(struct SaveLoadInfo *sli)
+{
+    RtlSaveExecutionState(sli);
+}
+
+static bool s_state_has_execution;
+
+static void GameStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version)
+{
+    (void)version;
+    s_state_has_execution = RtlLoadExecutionState(sli);
+}
+
+static void GameStateLoaded(uint32_t version)
+{
+    (void)version;
+    if (s_state_has_execution)
+        RtlApplyExecutionState();
+    s_state_has_execution = false;
+}
 
 void GameRunOneFrame(void)
 {
@@ -62,4 +93,7 @@ const RtlGameInfo kGameInfo = {
     .draw_ppu_frame = &GameDrawPpuFrame,
     .save_name_prefix = "save",
     .session_reset = &GameSessionReset,
+    .state_save_extra = &GameStateSaveExtra,
+    .state_load_extra = &GameStateLoadExtra,
+    .on_state_loaded = &GameStateLoaded,
 };

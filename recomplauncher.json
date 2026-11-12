@@ -150,6 +150,86 @@
       }
     },
     {
+      "id": "renderer",
+      "label": "Renderer",
+      "help": "OpenGL runs the shaders. Direct3D 11 is often smoother on Intel graphics.",
+      "choices": [
+        {
+          "label": "OpenGL",
+          "set": {
+            "Graphics/Renderer": "opengl"
+          }
+        },
+        {
+          "label": "Direct3D 11",
+          "set": {
+            "Graphics/Renderer": "direct3d11"
+          }
+        },
+        {
+          "label": "Direct3D 12",
+          "set": {
+            "Graphics/Renderer": "direct3d12"
+          }
+        },
+        {
+          "label": "Vulkan",
+          "set": {
+            "Graphics/Renderer": "vulkan"
+          }
+        }
+      ],
+      "defaults": {
+        "Graphics/Renderer": "opengl"
+      }
+    },
+    {
+      "id": "shader",
+      "label": "Shader",
+      "help": "A look for the picture. None is the console's own pixels; shaders switch the renderer to OpenGL.",
+      "choices": [
+        {
+          "label": "None",
+          "set": {
+            "Graphics/Shader": ""
+          }
+        },
+        {
+          "label": "Scanlines",
+          "set": {
+            "Graphics/Shader": "assets/shaders/Scanlines/Classic.glslp"
+          }
+        },
+        {
+          "label": "CRT",
+          "set": {
+            "Graphics/Shader": "assets/shaders/CRT/Lottes.glslp"
+          }
+        },
+        {
+          "label": "Curved CRT",
+          "set": {
+            "Graphics/Shader": "assets/shaders/CRT/Geom (curved).glslp"
+          }
+        },
+        {
+          "label": "ScaleFX",
+          "set": {
+            "Graphics/Shader": "assets/shaders/Upscaler/ScaleFX.glslp"
+          }
+        },
+        {
+          "label": "NNEDI3",
+          "set": {
+            "Graphics/Shader": "assets/shaders/Upscaler/NNEDI3 (neural).glslp"
+          }
+        }
+      ],
+      "defaults": {
+        "Graphics/Shader": ""
+      }
+    },
+    {
       "id": "sprites",
       "label": "Sprite limit",
       "help": "The console hides sprites when too many share a line, which makes them flicker. Off shows them all.",
@@ -210,6 +290,29 @@
       "when": {
         "Sound/EnableAudio": "1"
       }
+    },
+    {
+      "id": "background_input",
+      "label": "Controller in the background",
+      "advanced": true,
+      "help": "Let the game read the controller while another window is in front. Off keeps launcher overlays from moving the game.",
+      "choices": [
+        {
+          "label": "Off",
+          "set": {
+            "General/BackgroundInput": "0"
+          }
+        },
+        {
+          "label": "On",
+          "set": {
+            "General/BackgroundInput": "1"
+          }
+        }
+      ],
+      "defaults": {
+        "General/BackgroundInput": "0"
+      }
     }
   ],
   "actions": [
@@ -225,5 +328,27 @@
       "help": "Copies of your saves the game's own updater makes before installing a new version.",
       "open": "backups"
     }
-  ]
+  ],
+  "prepare": {
+    "program": [
+      "DonkeyKongCountry2SNESRecomp.exe"
+    ],
+    "args": [
+      "--prepare",
+      "--rom",
+      "{game}"
+    ],
+    "label": "Recompiling the game from your ROM. A few minutes; the first time it also gets the build tools.",
+    "timeout": 3600
+  },
+  "exit_codes": {
+    "1": "The game couldn't use your ROM. Pick your copy again on the game's page.",
+    "3": "This ROM isn't the USA release of Donkey Kong Country 2: Diddy's Kong Quest (CRC32 006364db). Pick that copy on the game's page.",
+    "4": "The build tools couldn't be set up. Check your internet connection and set the game up again.",
+    "5": "Building the game failed. Its log is build/snesrecomp_rebuild.log in the game's folder."
+  },
+  "looks": {
+    "allowed": false,
+    "reason": "This recomp has its own scanline, CRT and upscaler shaders: pick one under Shader in its settings."
+  }
 }

@@ -1,16 +1,25 @@
 # Changelog
 
-## 0.1.6 — 2026-11-11
+## 0.1.6 — 2026-11-12
 
-Framework fixes from the later ports and RecompLauncher support. A setting
-that needs a restart (renderer, audio output) now comes back to the same
+Current snesrecomp and recomp-ui, and RecompLauncher's recommendations. The
+framework brings its access-exact sound timing (a per-clock S-DSP), sprite
+priority, brightness-rounding, HDMA and mosaic fixes: over the same test run
+2302 of 3000 frames now match snes9x exactly, where 0.1.5 matched 2215. A
+setting that needs a restart (renderer, audio output) comes back to the same
 moment instead of starting the game over; a game that reads the controller
 by hand gets fresh buttons on every read; a save state loaded in another
-scene is no longer drawn with the previous scene's registers. The release
-carries a `recomplauncher.json` for
-[RecompLauncher](https://recomplauncher.com). Normal play is unchanged (the
-test run gives the same pictures, frame by frame); saves and save states from
-0.1.5 keep working.
+scene is no longer drawn with the previous scene's registers. Save states
+now keep the CPU's place, so one loaded during the logos, a menu or the map
+resumes where it was made. Your in-game save and the save states from 0.1.5
+keep loading, with the music playing on (the old sound state is converted).
+With [RecompLauncher](https://recomplauncher.com) the game builds on the
+launcher's setup screen, Play goes straight into the game, Big Picture opens
+full screen, and the renderer and shader are on the game's page. Controllers
+are no longer read while the window is in the background ([General]
+BackgroundInput = 1 restores that); the log keeps the last runs. The update
+check on start stays; when RecompLauncher starts the game it leaves updates
+to the launcher.
 
 ## 0.1.5 — 2026-11-03
 

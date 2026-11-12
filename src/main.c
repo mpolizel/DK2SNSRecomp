@@ -70,25 +70,41 @@ static void Dkc2ConfigureLauncher(RecompLauncherCGameInfo *info)
 #undef HIBYTE  /* the framework's types.h has its own; this file does not use it */
 #undef LOBYTE
 #include <windows.h>
+#include <wchar.h>
 
 /* The Windows build is a window app (no console, see CMakeLists.txt). Keep the
  * host's stdout/stderr diagnostics in <exe>.log beside the executable unless
  * the caller already redirected them. */
 static void Dkc2RedirectLogsToFile(void)
 {
-    if (GetStdHandle(STD_ERROR_HANDLE) != NULL)
+    /* A caller that gave us a pipe (RecompLauncher reads stdout for the
+     * setup's progress lines) keeps it; only a missing stream goes to the log. */
+    const int have_err = GetStdHandle(STD_ERROR_HANDLE) != NULL;
+    const int have_out = GetStdHandle(STD_OUTPUT_HANDLE) != NULL;
+    if (have_err)
         return;
+    wchar_t base[MAX_PATH];
+    DWORD len = GetModuleFileNameW(NULL, base, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH - 8)
+        return;
+    wchar_t *dot = wcsrchr(base, L'.');
+    if (dot) *dot = L'\0';
+    /* Keep the last few runs: X.log is this run, X.1.log the one before. */
+    wchar_t from[MAX_PATH], to[MAX_PATH];
+    for (int i = 3; i >= 1; --i) {
+        if (i == 1) swprintf(from, MAX_PATH, L"%ls.log", base);
+        else swprintf(from, MAX_PATH, L"%ls.%d.log", base, i - 1);
+        swprintf(to, MAX_PATH, L"%ls.%d.log", base, i);
+        DeleteFileW(to);
+        MoveFileW(from, to);
+    }
     wchar_t path[MAX_PATH];
-    DWORD len = GetModuleFileNameW(NULL, path, MAX_PATH);
-    if (len == 0 || len >= MAX_PATH - 4)
-        return;
-    wchar_t *dot = wcsrchr(path, L'.');
-    wcscpy_s(dot ? dot : path + len, MAX_PATH - (size_t)((dot ? dot : path + len) - path), L".log");
+    swprintf(path, MAX_PATH, L"%ls.log", base);
     FILE *log;
     if (_wfreopen_s(&log, path, L"w", stderr) != 0)
         return;
     setvbuf(stderr, NULL, _IONBF, 0);
-    if (_dup2(_fileno(stderr), 1) == 0)
+    if (!have_out && _dup2(_fileno(stderr), 1) == 0)
         setvbuf(stdout, NULL, _IONBF, 0);
 }
 #endif
