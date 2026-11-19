@@ -1,0 +1,39 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Donkey Kong Country 2: Diddy's Kong Quest",
+  "wikidata": "Q1072051",
+  "system": "SNES",
+  "type": "recomp",
+  "original": {
+    "region": "USA",
+    "revision": "1.0",
+    "sha1": "3ec2035962918b5523d8b4745406f46f2a739b8d"
+  },
+  "project": "Donkey Kong Country 2 Recomp",
+  "status": "released",
+  "targets": [
+    "Windows"
+  ],
+  "toolchain": "Snesrecomp",
+  "approach": "Static recompilation of the SNES ROM to C with snesrecomp, built into a native Windows program on the player's PC",
+  "maintainers": [
+    {
+      "name": "mpolizel",
+      "link": "https://github.com/mpolizel"
+    }
+  ],
+  "links": [
+    {
+      "label": "Buy me a coffee",
+      "url": "https://buymeacoffee.com/mpolizel"
+    }
+  ],
+  "launchers": [
+    {
+      "path": "recomplauncher.json",
+      "in": "repo",
+      "format": "RecompLauncher"
+    }
+  ],
+  "notes": "Setup pack: no ROM or game data is included. The player supplies their own USA ROM and the game is built on their PC, by itself or from RecompLauncher. Saves and save states carry over between updates."
+}
