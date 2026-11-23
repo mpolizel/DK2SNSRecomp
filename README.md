@@ -115,8 +115,11 @@ git -C snesrecomp apply ../patches/snesrecomp-mosaic-frame-model.patch
 git -C snesrecomp apply ../patches/snesrecomp-nmi-idle-loop-wai.patch
 git -C snesrecomp apply ../patches/snesrecomp-nmi-wai-in-handler.patch
 git -C snesrecomp apply ../patches/snesrecomp-raster-oam-and-hdma.patch
+git -C snesrecomp apply ../patches/snesrecomp-raster-vram-live-regs.patch
 git -C snesrecomp apply ../patches/snesrecomp-recomplauncher.patch
 git -C snesrecomp apply ../patches/snesrecomp-resume-state-restart.patch
+git -C snesrecomp apply ../patches/snesrecomp-setup-env-crlf.patch
+git -C snesrecomp apply ../patches/snesrecomp-setup-moved-folder.patch
 git -C snesrecomp apply ../patches/snesrecomp-shader-forces-opengl.patch
 git -C snesrecomp apply ../patches/snesrecomp-state-load-raster-reset.patch
 git -C snesrecomp apply ../patches/snesrecomp-v10-savestates.patch

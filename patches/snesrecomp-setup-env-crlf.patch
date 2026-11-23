@@ -1,0 +1,53 @@
+diff --git a/host/snesrecomp_codegen_host.c b/host/snesrecomp_codegen_host.c
+index 135b43ee..6fee7e49 100644
+--- a/host/snesrecomp_codegen_host.c
++++ b/host/snesrecomp_codegen_host.c
+@@ -1277,7 +1277,18 @@ static int write_windows_deferred_rebuild_helper(char* err_msg, size_t err_cap)
+             ")\r\n"
+             /* The pack's env.bat is its own statement of how to use it
+              * (PATH, CC/CXX, SDL3_DIR); calling it beats a second copy. */
+-            "if exist \"%%PACK%%\\env.bat\" call \"%%PACK%%\\env.bat\"\r\n"
++            /* The pack ships env.bat with LF line endings, which cmd misreads under
++             * `call` (stray "t"/"ho" commands, exit 255 that ends the helper before
++             * it configures). `more` rewrites it with CRLF; the copy sits in the pack,
++             * so its %~dp0 is still the pack root. */
++            "if exist \"%%PACK%%\\env.bat\" (\r\n"
++            "  more < \"%%PACK%%\\env.bat\" > \"%%PACK%%\\env.crlf.cmd\" 2>NUL\r\n"
++            "  if exist \"%%PACK%%\\env.crlf.cmd\" (\r\n"
++            "    call \"%%PACK%%\\env.crlf.cmd\"\r\n"
++            "  ) else (\r\n"
++            "    call \"%%PACK%%\\env.bat\"\r\n"
++            "  )\r\n"
++            ")\r\n"
+             "cd /d \"%%ROOT%%\"\r\n"
+             /* A setup zip ships no build tree: configure on first rebuild. */
+             "if not exist \"%%BUILD_DIR%%\\CMakeCache.txt\" (\r\n"
+@@ -1850,7 +1861,7 @@ void snesrecomp_codegen_host_apply(RecompLauncherCGameInfo* gi,
+ 
+     gi->prepare_with_progress = host_prepare_generate;
+     gi->prepare_use_selected_rom = 1;
+-    gi->prepare_section_title = "2. Generate C sources & rebuild";
++    gi->prepare_section_title = "Generate C sources & rebuild";  /* the launcher numbers it */
+     gi->prepare_busy_status = "Generating sources…";
+     gi->prepare_success_status = "Sources ready — building…";
+ 
+@@ -1957,7 +1968,18 @@ static int prepare_build_win(char* err, size_t cap) {
+     bat_write_set(f, "TARGET", g_cmake_target);
+     bat_write_set(f, "PACK", g_toolchain_root);
+     fprintf(f,
+-            "if exist \"%%PACK%%\\env.bat\" call \"%%PACK%%\\env.bat\" >nul\r\n"
++            /* The pack ships env.bat with LF line endings, which cmd misreads under
++             * `call` (stray "t"/"ho" commands, exit 255 that ends the helper before
++             * it configures). `more` rewrites it with CRLF; the copy sits in the pack,
++             * so its %~dp0 is still the pack root. */
++            "if exist \"%%PACK%%\\env.bat\" (\r\n"
++            "  more < \"%%PACK%%\\env.bat\" > \"%%PACK%%\\env.crlf.cmd\" 2>NUL\r\n"
++            "  if exist \"%%PACK%%\\env.crlf.cmd\" (\r\n"
++            "    call \"%%PACK%%\\env.crlf.cmd\" >nul\r\n"
++            "  ) else (\r\n"
++            "    call \"%%PACK%%\\env.bat\" >nul\r\n"
++            "  )\r\n"
++            ")\r\n"
+             "cd /d \"%%ROOT%%\"\r\n"
+             "if not exist \"%%BUILD_DIR%%\\CMakeCache.txt\" (\r\n"
+             "  powershell -NoProfile -Command \"Get-ChildItem -Recurse -File "

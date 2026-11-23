@@ -147,7 +147,11 @@ function Get-LoadResult([string]$TracePath, [hashtable]$SaveRun, [string[]]$Save
 Write-Host "== Previous release $PreviousTag"
 Invoke-Git -c core.longpaths=true clone -q --recurse-submodules --branch $PreviousTag $repo $install
 Invoke-Git -C $install config core.longpaths true
-foreach ($p in Get-ChildItem (Join-Path $install 'patches') -Filter *.patch | Sort-Object Name) {
+# Byte (ordinal) order, as the packer applies them: Sort-Object's culture
+# order ignores hyphens and puts recomp-ui-hostopts-* before host-widescreen.
+$patchFiles = @(Get-ChildItem (Join-Path $install 'patches') -Filter *.patch)
+[Array]::Sort([string[]]($patchFiles | ForEach-Object Name), [object[]]$patchFiles, [StringComparer]::Ordinal)
+foreach ($p in $patchFiles) {
   $sub = if ($p.Name -like 'recomp-ui-*') { 'recomp-ui' } else { 'snesrecomp' }
   Invoke-Git -C (Join-Path $install $sub) apply $p.FullName
 }

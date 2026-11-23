@@ -1,0 +1,59 @@
+diff --git a/host/snesrecomp_codegen_host.c b/host/snesrecomp_codegen_host.c
+index 6fee7e49..825ebc4f 100644
+--- a/host/snesrecomp_codegen_host.c
++++ b/host/snesrecomp_codegen_host.c
+@@ -1291,10 +1291,22 @@ static int write_windows_deferred_rebuild_helper(char* err_msg, size_t err_cap)
+             ")\r\n"
+             "cd /d \"%%ROOT%%\"\r\n"
+             /* A setup zip ships no build tree: configure on first rebuild. */
++            /* A configured build remembers its folder (CMAKE_CACHEFILE_DIR, forward
++             * slashes). After the game folder is moved or renamed every rebuild
++             * fails ("CMakeCache.txt directory is different"): drop the stale
++             * configuration (never saves) so it is configured again below. */
++            "set \"BUILD_DIR_FWD=%%BUILD_DIR:\\=/%%\"\r\n"
++            "if exist \"%%BUILD_DIR%%\\CMakeCache.txt\" (\r\n"
++            "  findstr /B /I /L /C:\"CMAKE_CACHEFILE_DIR:INTERNAL=%%BUILD_DIR_FWD%%\" \"%%BUILD_DIR%%\\CMakeCache.txt\" >NUL || (\r\n"
++            "    echo The game folder moved: configuring the build again.\r\n"
++            "    del /q \"%%BUILD_DIR%%\\CMakeCache.txt\"\r\n"
++            "    if exist \"%%BUILD_DIR%%\\CMakeFiles\" rmdir /s /q \"%%BUILD_DIR%%\\CMakeFiles\"\r\n"
++            "  )\r\n"
++            ")\r\n"
+             "if not exist \"%%BUILD_DIR%%\\CMakeCache.txt\" (\r\n"
+             /* Zip time is zone-less; files unpacked west of the packer sit
+              * in the future and ninja regenerates forever. Pull them back. */
+-            "  powershell -NoProfile -Command \"Get-ChildItem -Recurse -File "
++            "  \"%%SystemRoot%%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -Command \"Get-ChildItem -Recurse -File "
+             "-Exclude build | Where-Object { $_.LastWriteTime -gt (Get-Date) } | "
+             "ForEach-Object { $_.LastWriteTime = Get-Date }\"\r\n"
+             "  echo Configuring...\r\n"
+@@ -1312,7 +1324,7 @@ static int write_windows_deferred_rebuild_helper(char* err_msg, size_t err_cap)
+              * failure report after the window has gone. */
+             "\"%%CMAKE%%\" --build \"%%BUILD_DIR%%\" --parallel "
+             "--target \"%%TARGET%%\" 2>&1 | "
+-            "powershell -NoProfile -Command \"$input | Tee-Object -FilePath "
++            "\"%%SystemRoot%%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -Command \"$input | Tee-Object -FilePath "
+             "'%%BUILD_DIR%%\\snesrecomp_rebuild.log' -Append\"\r\n"
+             "if errorlevel 1 (\r\n"
+             "  echo.\r\n"
+@@ -1981,8 +1993,20 @@ static int prepare_build_win(char* err, size_t cap) {
+             "  )\r\n"
+             ")\r\n"
+             "cd /d \"%%ROOT%%\"\r\n"
++            /* A configured build remembers its folder (CMAKE_CACHEFILE_DIR, forward
++             * slashes). After the game folder is moved or renamed every rebuild
++             * fails ("CMakeCache.txt directory is different"): drop the stale
++             * configuration (never saves) so it is configured again below. */
++            "set \"BUILD_DIR_FWD=%%BUILD_DIR:\\=/%%\"\r\n"
++            "if exist \"%%BUILD_DIR%%\\CMakeCache.txt\" (\r\n"
++            "  findstr /B /I /L /C:\"CMAKE_CACHEFILE_DIR:INTERNAL=%%BUILD_DIR_FWD%%\" \"%%BUILD_DIR%%\\CMakeCache.txt\" >NUL || (\r\n"
++            "    echo The game folder moved: configuring the build again.\r\n"
++            "    del /q \"%%BUILD_DIR%%\\CMakeCache.txt\"\r\n"
++            "    if exist \"%%BUILD_DIR%%\\CMakeFiles\" rmdir /s /q \"%%BUILD_DIR%%\\CMakeFiles\"\r\n"
++            "  )\r\n"
++            ")\r\n"
+             "if not exist \"%%BUILD_DIR%%\\CMakeCache.txt\" (\r\n"
+-            "  powershell -NoProfile -Command \"Get-ChildItem -Recurse -File "
++            "  \"%%SystemRoot%%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -Command \"Get-ChildItem -Recurse -File "
+             "-Exclude build | Where-Object { $_.LastWriteTime -gt (Get-Date) } | "
+             "ForEach-Object { $_.LastWriteTime = Get-Date }\"\r\n"
+             "  \"%%CMAKE%%\" -S \"%%ROOT%%\" -B \"%%BUILD_DIR%%\" -G Ninja "

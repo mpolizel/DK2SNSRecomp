@@ -1,0 +1,69 @@
+diff --git a/runner/src/snes/ppu.c b/runner/src/snes/ppu.c
+index 7ee3472b..f8486cc2 100644
+--- a/runner/src/snes/ppu.c
++++ b/runner/src/snes/ppu.c
+@@ -3618,6 +3618,15 @@ static struct {
+ static int s_raster_oam_next;
+ static uint16_t s_raster_live_oam[0x100];  /* the guest's OAM during a render */
+ static uint8_t s_raster_live_high_oam[0x20];
++/* The guest's register file during a render. ppu_rasterRenderBegin overwrites
++ * it with the completed field's baseline; ppu_rasterRenderEnd puts this copy
++ * back. Rebuilding it from the recording field's journal instead (baseline of
++ * the field just drawn + the writes made since) loses every register that was
++ * last written before the two fields' baselines were taken: the two baselines
++ * then disagree for good, and the picture alternates between them every frame
++ * (Yoshi's Island's map after a bonus game drew the bonus game's BG mode and
++ * tile bases on every other frame). */
++static uint8_t s_raster_live_regs[PPU_SAVESTATE_REGS_SIZE];
+ 
+ /* Only the machine's PPU journals: the debug server and a few tools run
+  * ppu_write on scratch copies. */
+@@ -3784,6 +3793,7 @@ void ppu_rasterRenderBegin(Ppu *ppu) {
+   s_raster_port.oamInHigh = ppu->oamInHigh;
+   s_raster_port.oamSecondWrite = ppu->oamSecondWrite;
+   s_raster_port.oamBuffer = ppu->oamBuffer;
++  memcpy(s_raster_live_regs, &ppu->inidisp, PPU_SAVESTATE_REGS_SIZE);
+   memcpy(&ppu->inidisp, f->regs, PPU_SAVESTATE_REGS_SIZE);
+   ppu->scrollPrev = f->scrollPrev;
+   ppu->scrollPrev2 = f->scrollPrev2;
+@@ -3852,12 +3862,40 @@ void ppu_rasterRenderEnd(Ppu *ppu) {
+   int i;
+   if (!s_raster_armed || !s_raster_rendering) return;
+   s_raster_rendering = 0;
++  /* What the render wrote (the drawn field's journal and its HDMA, in beam
++   * order) stands, as it does on hardware. A byte the render left at the
++   * drawn field's baseline was not written by it: that byte is the guest's
++   * own, from before the render (see s_raster_live_regs). */
++  uint8_t untouched[PPU_SAVESTATE_REGS_SIZE];
++  if (s_raster_render) {
++    const uint8_t *regs = &ppu->inidisp;
++    const uint8_t *base = s_raster_render->regs;
++    for (i = 0; i < PPU_SAVESTATE_REGS_SIZE; i++)
++      untouched[i] = regs[i] == base[i];
++  }
+   if (s_raster_have_completed) {
+     f = &s_field[s_raster_cur];
+     for (i = 0; i < f->count; i++)
+       if (f->e[i].reg != 0x420C)
+         raster_replay(ppu, f->e[i].reg, f->e[i].val);
+   }
++  if (s_raster_render) {
++    static unsigned s_stale_reports;
++    uint8_t *regs = &ppu->inidisp;
++    int stale = 0;
++    for (i = 0; i < PPU_SAVESTATE_REGS_SIZE; i++)
++      if (untouched[i] && regs[i] != s_raster_live_regs[i]) {
++        regs[i] = s_raster_live_regs[i];
++        stale++;
++      }
++    /* Each one used to drift the two fields apart for good (see above). A
++     * few lines per session tell a report where it would have shown. */
++    if (stale && s_stale_reports < 3) {
++      s_stale_reports++;
++      fprintf(stderr, "[raster] kept %d register byte(s) the drawn field's "
++              "baseline had stale\n", stale);
++    }
++  }
+   ppu->oamAdr = s_raster_port.oamAdr;
+   ppu->oamInHigh = s_raster_port.oamInHigh;
+   ppu->oamSecondWrite = s_raster_port.oamSecondWrite;

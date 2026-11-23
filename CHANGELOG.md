@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.7 — 2026-11-23
+
+Generate & rebuild works again with the build tools the setup downloads: their
+`env.bat` comes with Unix line endings, which the Windows command prompt
+misreads, so the rebuild window closed before building; the setup now runs a
+Windows-format copy of it. A game folder that was moved or renamed rebuilds
+again instead of failing on the old build configuration (only the build
+configuration is redone; saves are never touched), and PowerShell is called by
+its full path. A renderer fix from Yoshi's Island 0.1.4 keeps the game's own
+video registers after each frame is drawn: a register the game set only once
+could otherwise alternate between two values and make one screen flicker every
+other frame. The setup's second step is no longer numbered twice. Your in-game
+saves and save states keep loading.
+
 ## 0.1.6 — 2026-11-12
 
 Current snesrecomp and recomp-ui, and RecompLauncher's recommendations. The
