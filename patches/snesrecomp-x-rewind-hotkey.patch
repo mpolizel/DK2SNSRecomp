@@ -1,0 +1,39 @@
+diff --git a/runner/src/desktop/host_main.c b/runner/src/desktop/host_main.c
+index a3887428..db091d2e 100644
+--- a/runner/src/desktop/host_main.c
++++ b/runner/src/desktop/host_main.c
+@@ -2253,7 +2253,10 @@ static void RewindKeyDown(int key, int repeat) {
+  * ports: Left/Right scrub (hold to keep scrubbing), Enter or Space commits,
+  * Escape cancels, and the pad mirrors them. */
+ static void RunRewindLoop(bool *running) {
+-  uint32 prev_pad = 0;
++  /* Seeded with what is already held, so only a NEW press counts: the button
++   * that just committed or closed the filmstrip, still down when it opens
++   * again, used to commit or close it on its first pump. */
++  uint32 prev_pad = OverlayNavInputs();
+   uint32 held_dir = 0;
+   uint32 held_since = 0, last_repeat = 0;
+   unsigned frames = 0;
+@@ -4616,7 +4619,13 @@ error_reading:;
+       continue;   /* guest was frozen: no frame to run or present */
+     }
+     g_open_launcher_hotkey = 0;
+-    if ((g_rewind_hotkey || PadGesturePressed(&g_rewind_gesture)) && !snes_rewind_is_open() &&
++    /* Consumed before the filmstrip runs: RunRewindLoop's `continue` below
++     * skips the clear after this block, so a filmstrip opened from the
++     * keyboard left the hotkey set and reopened itself every frame after it
++     * closed -- the player could never get back to the game. */
++    const int rewind_hotkey = g_rewind_hotkey;
++    g_rewind_hotkey = 0;
++    if ((rewind_hotkey || PadGesturePressed(&g_rewind_gesture)) && !snes_rewind_is_open() &&
+         !snes_savestate_menu_is_open()) {
+       /* Refused during netplay by snes_rewind_open() itself: one machine
+        * cannot move its own clock backwards while a peer is watching. */
+@@ -4625,7 +4634,6 @@ error_reading:;
+         continue;   /* guest was frozen: no frame to run or present */
+       }
+     }
+-    g_rewind_hotkey = 0;
+     /* Exactly ONE poll_open per frame: it latches the previous word to edge
+      * detect on, so a second call in the same frame eats the edge. */
+     (void)snes_savestate_menu_poll_open(human);

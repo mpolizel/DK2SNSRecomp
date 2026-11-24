@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.8 — 2026-11-24
+
+Rewind no longer gets stuck in a loop: after a filmstrip opened with the
+keyboard key (F8) closed, it opened again at once, and the button that had
+just committed or closed it closed it again, so the game never came back. Now
+the key is released when the filmstrip opens, and only a new press inside it
+counts. Your in-game saves and save states keep loading.
+
 ## 0.1.7 — 2026-11-23
 
 Generate & rebuild works again with the build tools the setup downloads: their
