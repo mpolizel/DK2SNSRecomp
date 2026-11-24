@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.9 — 2026-11-24
+
+A ROM that is not the dump this game needs is now refused with a clear message
+instead of the game quitting silently after Play. The message names the needed
+dump, shows the SHA-256 of your file and of the needed dump, and explains that
+the ROM is checked by that hash (a copier header is ignored, so headered .smc
+and headerless .sfc copies of the right dump both work, and renaming a file
+does not change it). This covers a ROM chosen in RecompLauncher, which the
+game used to accept with only a warning in the log. Your in-game saves and
+save states keep loading.
+
 ## 0.1.8 — 2026-11-24
 
 Rewind no longer gets stuck in a loop: after a filmstrip opened with the

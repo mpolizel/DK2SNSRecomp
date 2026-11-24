@@ -1,0 +1,118 @@
+diff --git a/host/snesrecomp_codegen_host.c b/host/snesrecomp_codegen_host.c
+index 825ebc4f..51c48bfa 100644
+--- a/host/snesrecomp_codegen_host.c
++++ b/host/snesrecomp_codegen_host.c
+@@ -1085,7 +1085,13 @@ static int run_generate_win(const char* rom,
+     CloseHandle(pi.hProcess);
+     if (code == 0) return 1;
+     if (code == 3)
+-        snprintf(err_msg, err_cap, "ROM verification failed (wrong dump).");
++        snprintf(err_msg, err_cap, "ROM verification failed: this file is not the dump %s "
++                 "needs. ROMs are checked by their SHA-256 hash (a 512-byte "
++                 "copier header is ignored), so renaming a file does not "
++                 "change it. The needed dump's SHA-256 is %s. Select the "
++                 "correct ROM and try again.", g_display,
++                 (g_cfg->expected_sha256 && g_cfg->expected_sha256[0])
++                     ? g_cfg->expected_sha256 : "in rom_identity.txt");
+     else
+         step_fail_message(err_msg, err_cap, "snesrecomp generate", (int)code);
+     return 0;
+@@ -1180,7 +1186,13 @@ static int run_generate_posix(const char* rom,
+     int code = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+     if (code == 0) return 1;
+     if (code == 3)
+-        snprintf(err_msg, err_cap, "ROM verification failed (wrong dump).");
++        snprintf(err_msg, err_cap, "ROM verification failed: this file is not the dump %s "
++                 "needs. ROMs are checked by their SHA-256 hash (a 512-byte "
++                 "copier header is ignored), so renaming a file does not "
++                 "change it. The needed dump's SHA-256 is %s. Select the "
++                 "correct ROM and try again.", g_display,
++                 (g_cfg->expected_sha256 && g_cfg->expected_sha256[0])
++                     ? g_cfg->expected_sha256 : "in rom_identity.txt");
+     else
+         step_fail_message(err_msg, err_cap, "snesrecomp generate", code);
+     return 0;
+diff --git a/runner/src/desktop/host_main.c b/runner/src/desktop/host_main.c
+index db091d2e..4d1e28cb 100644
+--- a/runner/src/desktop/host_main.c
++++ b/runner/src/desktop/host_main.c
+@@ -3806,6 +3806,63 @@ int snesrecomp_desktop_main(const SnesDesktopHostGame *game, int argc, char **ar
+       }
+     }
+   }
++  /* One gate for every way a ROM gets here. The launcher window and the file
++   * picker already refuse a wrong dump, but a ROM handed in by RecompLauncher
++   * (--rom), given on the command line or taken from the SkipLauncher cache
++   * was only warned about -- and the mod plan then refused it and the game
++   * quit without a word, so Play just "did nothing". Refuse it here, with a
++   * dialog that says which dump is needed and how it is checked.
++   * SNESRECOMP_ALLOW_UNVERIFIED_ROM=1 keeps the old warn-and-continue. */
++  if (g_rom_identity_ok) {
++    SnesRomFacts rom_facts;
++    char rom_why[1536];
++    const SnesRomVerdict rom_verdict = snes_rom_identity_check_file(
++        rom_path_buf, g_rom_catalog, g_rom_catalog_count,
++        game->expected_sha256_hex, game->display_name, HostRomHelp(),
++        &rom_facts, rom_why, sizeof(rom_why));
++    const char *rom_allow = getenv("SNESRECOMP_ALLOW_UNVERIFIED_ROM");
++    if (rom_verdict != kSnesRom_Ok && !(rom_allow && strcmp(rom_allow, "1") == 0)) {
++      char rom_msg[3072];
++      size_t n = (size_t)snprintf(rom_msg, sizeof(rom_msg), "%s\n\nYour file: %s",
++                                  rom_why, rom_path_buf);
++      if (n < sizeof(rom_msg) && rom_facts.sha256_hex[0] &&
++          !strstr(rom_why, rom_facts.sha256_hex))
++        n += (size_t)snprintf(rom_msg + n, sizeof(rom_msg) - n,
++                              "\nIts SHA-256: %s", rom_facts.sha256_hex);
++      if (n < sizeof(rom_msg) && !strstr(rom_why, game->expected_sha256_hex))
++        n += (size_t)snprintf(rom_msg + n, sizeof(rom_msg) - n,
++                              "\nNeeded SHA-256: %s", game->expected_sha256_hex);
++      if (n < sizeof(rom_msg))
++        snprintf(rom_msg + n, sizeof(rom_msg) - n,
++                 "\n\nThe ROM is checked by its SHA-256 hash, computed over the "
++                 "game data (a 512-byte copier header is ignored), so only that "
++                 "exact dump works and renaming a file does not change it.\n\n"
++                 "Select the correct ROM in RecompLauncher (or in this game's "
++                 "launcher) and press Play again.");
++      fprintf(stderr, "[Launcher] ROM refused: '%s'\n%s\n", rom_path_buf, rom_msg);
++      host_report_breadcrumb("exit: ROM refused (not the dump this build needs): %s",
++                             rom_path_buf);
++#ifdef _WIN32
++      {
++        const char *vd = getenv("SDL_VIDEODRIVER");
++        const int no_dialog = start_paused || script_file || framedump_dir ||
++                              (vd && strcmp(vd, "dummy") == 0);
++        if (!no_dialog) {
++          char rom_title[256];
++          snprintf(rom_title, sizeof(rom_title), "%s - %s",
++                   game->display_name ? game->display_name : "Game",
++                   rom_verdict == kSnesRom_Wrong ? "Wrong ROM" :
++                   rom_verdict == kSnesRom_Archive ? "Archive, not a ROM" :
++                   rom_verdict == kSnesRom_Unreadable ? "ROM unreadable" :
++                                                        "ROM not recognized");
++          MessageBoxA(NULL, rom_msg, rom_title,
++                      MB_ICONERROR | MB_OK | MB_SETFOREGROUND | MB_TOPMOST);
++        }
++      }
++#endif
++      return 1;
++    }
++  }
+   static char *resolved_argv[2];
+   resolved_argv[0] = rom_path_buf;
+   resolved_argv[1] = NULL;
+diff --git a/runner/src/launcher.c b/runner/src/launcher.c
+index 09958c01..5edc0f66 100644
+--- a/runner/src/launcher.c
++++ b/runner/src/launcher.c
+@@ -133,8 +133,9 @@ static int validate_identity(const char *path, int positional,
+     /* Positional validators preserve the historical warning-and-continue
+      * behavior for explicit command-line overrides. */
+     if (positional) {
+-        fprintf(stderr, "[Launcher] Warning: continuing anyway with an "
+-                        "unverified ROM\n");
++        /* The host's ROM gate decides what happens next. */
++        fprintf(stderr, "[Launcher] Warning: the ROM given on the command "
++                        "line is not verified\n");
+         return 1;
+     }
+ #ifdef _WIN32

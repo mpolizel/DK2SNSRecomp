@@ -124,6 +124,7 @@ git -C snesrecomp apply ../patches/snesrecomp-shader-forces-opengl.patch
 git -C snesrecomp apply ../patches/snesrecomp-state-load-raster-reset.patch
 git -C snesrecomp apply ../patches/snesrecomp-v10-savestates.patch
 git -C snesrecomp apply ../patches/snesrecomp-x-rewind-hotkey.patch
+git -C snesrecomp apply ../patches/snesrecomp-x-rom-gate.patch
 git -C recomp-ui apply ../patches/recomp-ui-host-toggle.patch
 ```
 
